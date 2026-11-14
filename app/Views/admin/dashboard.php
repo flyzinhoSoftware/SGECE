@@ -42,11 +42,11 @@ $nomeApresentacao = htmlspecialchars(
                 <span class="stat-tag">Escolas</span>
             </div>
 
-            <h2>—</h2>
+            <h2><?= number_format((int) ($totalSchools ?? 0), 0, ',', '.') ?></h2>
             <p>Total de escolas registadas</p>
 
             <div class="stat-footer">
-                <span>Aguardando integração</span>
+                <span>Registos institucionais</span>
             </div>
         </article>
 
@@ -127,64 +127,64 @@ $nomeApresentacao = htmlspecialchars(
 
             <div class="module-grid">
 
-                <div class="module-item">
+                <a class="module-item" href="<?= htmlspecialchars($schoolsUrl, ENT_QUOTES, 'UTF-8') ?>">
                     <div class="module-icon module-blue">
                         <i class="bi bi-buildings"></i>
                     </div>
 
                     <strong>Escolas</strong>
                     <small>Gestão institucional</small>
-                </div>
+                </a>
 
 
-                <div class="module-item">
+                <a class="module-item" href="<?= htmlspecialchars($moduleUrls['students'], ENT_QUOTES, 'UTF-8') ?>">
                     <div class="module-icon module-purple">
                         <i class="bi bi-people"></i>
                     </div>
 
                     <strong>Alunos</strong>
                     <small>Registo e identificação</small>
-                </div>
+                </a>
 
 
-                <div class="module-item">
+                <a class="module-item" href="<?= htmlspecialchars($moduleUrls['academic'], ENT_QUOTES, 'UTF-8') ?>">
                     <div class="module-icon module-green">
                         <i class="bi bi-journal-bookmark"></i>
                     </div>
 
                     <strong>Gestão académica</strong>
                     <small>Classes e matrículas</small>
-                </div>
+                </a>
 
 
-                <div class="module-item">
+                <a class="module-item" href="<?= htmlspecialchars($moduleUrls['certificates'], ENT_QUOTES, 'UTF-8') ?>">
                     <div class="module-icon module-orange">
                         <i class="bi bi-file-earmark-text"></i>
                     </div>
 
                     <strong>Documentos</strong>
                     <small>Certificados e declarações</small>
-                </div>
+                </a>
 
 
-                <div class="module-item">
+                <a class="module-item" href="<?= htmlspecialchars($moduleUrls['users'], ENT_QUOTES, 'UTF-8') ?>">
                     <div class="module-icon module-cyan">
                         <i class="bi bi-person-gear"></i>
                     </div>
 
                     <strong>Utilizadores</strong>
                     <small>Contas e permissões</small>
-                </div>
+                </a>
 
 
-                <div class="module-item">
+                <a class="module-item" href="<?= htmlspecialchars($moduleUrls['audit'], ENT_QUOTES, 'UTF-8') ?>">
                     <div class="module-icon module-red">
                         <i class="bi bi-shield-check"></i>
                     </div>
 
                     <strong>Auditoria</strong>
                     <small>Registo de actividades</small>
-                </div>
+                </a>
 
             </div>
 

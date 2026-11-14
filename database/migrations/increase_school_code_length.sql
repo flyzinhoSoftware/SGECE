@@ -1,0 +1,4 @@
+USE sgece_db;
+
+ALTER TABLE escolas
+    MODIFY COLUMN codigo VARCHAR(120) NOT NULL;

@@ -48,6 +48,13 @@ $iniciais = strtoupper(
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
           rel="stylesheet">
 
+    <?php if ($activeMenu === 'students'): ?>
+        <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+              rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css"
+              rel="stylesheet">
+    <?php endif; ?>
+
     <link rel="stylesheet"
           href="<?= $escape($publicPath) ?>/assets/css/admin.css">
 </head>
@@ -108,71 +115,71 @@ $iniciais = strtoupper(
 
             <div class="sidebar-section-label">GESTÃO ESCOLAR</div>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/escolas"
+               class="sidebar-link <?= $activeMenu === 'schools' ? 'active' : '' ?>">
                 <i class="bi bi-buildings"></i>
                 <span>Escolas</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/alunos"
+               class="sidebar-link <?= $activeMenu === 'students' ? 'active' : '' ?>">
                 <i class="bi bi-people"></i>
                 <span>Alunos</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/matriculas"
+               class="sidebar-link <?= $activeMenu === 'enrollment' ? 'active' : '' ?>">
                 <i class="bi bi-calendar3"></i>
                 <span>Matrículas</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/gestao-academica"
+               class="sidebar-link <?= $activeMenu === 'academic' ? 'active' : '' ?>">
                 <i class="bi bi-journal-bookmark"></i>
                 <span>Gestão académica</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
 
             <div class="sidebar-section-label">DOCUMENTAÇÃO</div>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/certificados"
+               class="sidebar-link <?= $activeMenu === 'certificates' ? 'active' : '' ?>">
                 <i class="bi bi-file-earmark-text"></i>
                 <span>Certificados</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/declaracoes"
+               class="sidebar-link <?= $activeMenu === 'declarations' ? 'active' : '' ?>">
                 <i class="bi bi-file-earmark-check"></i>
                 <span>Declarações</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/validacoes"
+               class="sidebar-link <?= $activeMenu === 'validations' ? 'active' : '' ?>">
                 <i class="bi bi-patch-check"></i>
                 <span>Validações</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
 
             <div class="sidebar-section-label">SISTEMA</div>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/utilizadores"
+               class="sidebar-link <?= $activeMenu === 'users' ? 'active' : '' ?>">
                 <i class="bi bi-person-gear"></i>
                 <span>Utilizadores</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/auditoria"
+               class="sidebar-link <?= $activeMenu === 'audit' ? 'active' : '' ?>">
                 <i class="bi bi-shield-check"></i>
                 <span>Auditoria</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
-            <div class="sidebar-link disabled" aria-disabled="true">
+            <a href="<?= $escape($basePath) ?>/admin/configuracoes"
+               class="sidebar-link <?= $activeMenu === 'settings' ? 'active' : '' ?>">
                 <i class="bi bi-gear"></i>
                 <span>Configurações</span>
-                <small>Brevemente</small>
-            </div>
+            </a>
 
         </nav>
 
@@ -280,6 +287,10 @@ $iniciais = strtoupper(
 
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+<?php if ($activeMenu === 'students'): ?>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<?php endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 

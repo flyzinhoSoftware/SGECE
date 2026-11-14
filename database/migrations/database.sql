@@ -33,20 +33,23 @@ INSERT IGNORE INTO niveis_acesso (nome, descricao) VALUES
 
 CREATE TABLE IF NOT EXISTS escolas (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    codigo VARCHAR(30) NOT NULL UNIQUE,
+    codigo VARCHAR(120) NOT NULL UNIQUE,
     nome VARCHAR(180) NOT NULL,
     tipo VARCHAR(30) NOT NULL,
     provincia VARCHAR(100) NOT NULL,
     distrito VARCHAR(100) NOT NULL,
     localidade VARCHAR(120) NULL,
-    endereco VARCHAR(255) NULL,
-    nuit VARCHAR(30) NULL,
-    telefone VARCHAR(30) NULL,
-    email VARCHAR(150) NULL,
+    endereco VARCHAR(255) NOT NULL,
+    telefone VARCHAR(30) NOT NULL,
+    email VARCHAR(150) NOT NULL,
     estado VARCHAR(20) NOT NULL DEFAULT 'activa',
     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     actualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_escolas_email UNIQUE (email),
+    CONSTRAINT uq_escolas_telefone UNIQUE (telefone),
+    CONSTRAINT uq_escolas_endereco UNIQUE (endereco)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -333,10 +336,13 @@ CREATE TABLE IF NOT EXISTS matriculas (
 -- =====================================================
 
 INSERT IGNORE INTO escolas
-    (codigo, nome, tipo, provincia, distrito, localidade, estado)
+    (codigo, nome, tipo, provincia, distrito, localidade, endereco,
+     telefone, email, estado)
 VALUES
     ('SGECE-ESC-TESTE-01', 'Escola de Teste SGECE', 'Secundaria',
-     'Maputo', 'Maputo', 'Localidade de Teste', 'activa');
+     'Maputo', 'Maputo', 'Localidade de Teste',
+     'Endereço de Teste 01, Maputo', '841000001',
+     'edts-maputo@sgece.gov.mz', 'activa');
 
 UPDATE usuarios u
 INNER JOIN escolas e
