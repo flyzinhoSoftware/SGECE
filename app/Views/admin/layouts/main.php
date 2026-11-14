@@ -48,7 +48,7 @@ $iniciais = strtoupper(
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
           rel="stylesheet">
 
-    <?php if ($activeMenu === 'students'): ?>
+    <?php if (in_array($activeMenu, ['students', 'enrollment'], true)): ?>
         <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
               rel="stylesheet">
         <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css"
@@ -287,7 +287,7 @@ $iniciais = strtoupper(
 
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
-<?php if ($activeMenu === 'students'): ?>
+<?php if (in_array($activeMenu, ['students', 'enrollment'], true)): ?>
     <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <?php endif; ?>

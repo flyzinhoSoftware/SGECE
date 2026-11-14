@@ -24,14 +24,21 @@ $router->post('/admin/escolas/estado', [AdminController::class, 'updateSchoolSta
 $router->get('/admin/alunos', [AdminController::class, 'students']);
 $router->post('/admin/alunos', [AdminController::class, 'saveStudent']);
 $router->post('/admin/alunos/estado', [AdminController::class, 'updateStudentStatus']);
+$router->get('/admin/utilizadores', [AdminController::class, 'users']);
+$router->post('/admin/utilizadores', [AdminController::class, 'saveUser']);
+$router->post('/admin/utilizadores/estado', [AdminController::class, 'updateUserStatus']);
+$router->get('/admin/matriculas', [AdminController::class, 'enrollment']);
+$router->post('/admin/matriculas', [AdminController::class, 'saveEnrollment']);
+$router->post('/admin/matriculas/estado', [AdminController::class, 'updateEnrollmentStatus']);
+$router->get('/admin/gestao-academica', [AdminController::class, 'academic']);
+$router->post('/admin/gestao-academica/anos', [AdminController::class, 'saveAcademicYear']);
+$router->post('/admin/gestao-academica/classes', [AdminController::class, 'saveAcademicClass']);
+$router->post('/admin/gestao-academica/disciplinas', [AdminController::class, 'saveAcademicDiscipline']);
 
 $staticAdminPages = [
-    '/admin/matriculas' => 'enrollment',
-    '/admin/gestao-academica' => 'academic',
     '/admin/certificados' => 'certificates',
     '/admin/declaracoes' => 'declarations',
     '/admin/validacoes' => 'validations',
-    '/admin/utilizadores' => 'users',
     '/admin/auditoria' => 'audit',
     '/admin/configuracoes' => 'settings'
 ];

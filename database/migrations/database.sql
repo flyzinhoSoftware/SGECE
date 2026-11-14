@@ -294,6 +294,7 @@ CREATE TABLE IF NOT EXISTS matriculas (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     aluno_escola_id BIGINT UNSIGNED NOT NULL,
     escola_id BIGINT UNSIGNED NOT NULL,
+    classe_id BIGINT UNSIGNED NOT NULL,
     turma_id BIGINT UNSIGNED NOT NULL,
     ano_lectivo_id BIGINT UNSIGNED NOT NULL,
     numero_processo INT UNSIGNED NOT NULL,
@@ -309,6 +310,10 @@ CREATE TABLE IF NOT EXISTS matriculas (
         FOREIGN KEY (escola_id)
         REFERENCES escolas(id),
 
+    CONSTRAINT fk_matricula_classe
+        FOREIGN KEY (classe_id)
+        REFERENCES classes(id),
+
     CONSTRAINT fk_matricula_turma
         FOREIGN KEY (turma_id)
         REFERENCES turmas(id),
@@ -321,6 +326,7 @@ CREATE TABLE IF NOT EXISTS matriculas (
         (escola_id, ano_lectivo_id, numero_processo),
 
     INDEX idx_matricula_aluno (aluno_escola_id),
+    INDEX idx_matricula_classe (classe_id),
     INDEX idx_matricula_turma (turma_id),
     INDEX idx_matricula_ano (ano_lectivo_id)
 ) ENGINE=InnoDB;
@@ -361,7 +367,7 @@ INSERT IGNORE INTO anos_lectivos
 VALUES
     (2026, '2026-01-01', '2026-12-31', 'activo');
 
-INSERT IGNORE INTO classes
+INSERT INTO classes
     (nivel_ensino_id, codigo, nome, ordem, estado)
 SELECT
     ne.id, 'TESTE-8A', '8a Classe', 8, 'activa'
@@ -389,6 +395,139 @@ INNER JOIN niveis_ensino ne
 WHERE c.codigo = 'TESTE-8A'
   AND c.nivel_ensino_id = ne.id
 LIMIT 1;
+
+INSERT IGNORE INTO classes
+    (nivel_ensino_id, codigo, nome, ordem, estado)
+SELECT
+    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem, 'activa'
+FROM niveis_ensino ne
+CROSS JOIN (
+    SELECT 'PRI-01' AS codigo, '1.ª Classe' AS nome, 1 AS ordem
+    UNION ALL SELECT 'PRI-02', '2.ª Classe', 2
+    UNION ALL SELECT 'PRI-03', '3.ª Classe', 3
+    UNION ALL SELECT 'PRI-04', '4.ª Classe', 4
+    UNION ALL SELECT 'PRI-05', '5.ª Classe', 5
+    UNION ALL SELECT 'PRI-06', '6.ª Classe', 6
+) curriculum
+WHERE ne.codigo = 'PRI'
+ON DUPLICATE KEY UPDATE
+    nome = VALUES(nome),
+    ordem = VALUES(ordem);
+
+INSERT INTO disciplinas
+    (nivel_ensino_id, codigo, nome, estado)
+SELECT
+    ne.id, curriculum.codigo, curriculum.nome, 'activa'
+FROM niveis_ensino ne
+CROSS JOIN (
+    SELECT 'LP-PRI' AS codigo, 'Língua Portuguesa' AS nome
+    UNION ALL SELECT 'LM-PRI', 'Língua Moçambicana'
+    UNION ALL SELECT 'MAT-PRI', 'Matemática'
+    UNION ALL SELECT 'EF-PRI', 'Educação Física'
+    UNION ALL SELECT 'CN-PRI', 'Ciências Naturais'
+    UNION ALL SELECT 'CS-PRI', 'Ciências Sociais'
+    UNION ALL SELECT 'EVO-PRI', 'Educação Visual e Ofícios'
+) curriculum
+WHERE ne.codigo = 'PRI'
+ON DUPLICATE KEY UPDATE
+    nome = VALUES(nome);
+
+INSERT IGNORE INTO classes_disciplinas (classe_id, disciplina_id)
+SELECT c.id, d.id
+FROM classes c
+INNER JOIN disciplinas d
+    ON d.nivel_ensino_id = c.nivel_ensino_id
+INNER JOIN niveis_ensino ne
+    ON ne.id = c.nivel_ensino_id
+WHERE ne.codigo = 'PRI'
+  AND (
+      (
+          c.codigo IN ('PRI-01', 'PRI-02', 'PRI-03', 'PRI-04', 'PRI-05', 'PRI-06')
+          AND d.codigo IN ('LP-PRI', 'LM-PRI', 'MAT-PRI', 'EF-PRI', 'EVO-PRI')
+      )
+      OR (
+          c.codigo IN ('PRI-04', 'PRI-05', 'PRI-06')
+          AND d.codigo IN ('CN-PRI', 'CS-PRI')
+      )
+  );
+
+INSERT INTO classes
+    (nivel_ensino_id, codigo, nome, ordem, estado)
+SELECT
+    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem, 'activa'
+FROM niveis_ensino ne
+CROSS JOIN (
+    SELECT 'SEC-07' AS codigo, '7.ª Classe' AS nome, 7 AS ordem
+    UNION ALL SELECT 'SEC-08', '8.ª Classe', 8
+    UNION ALL SELECT 'SEC-09', '9.ª Classe', 9
+    UNION ALL SELECT 'SEC-10', '10.ª Classe', 10
+    UNION ALL SELECT 'SEC-11', '11.ª Classe', 11
+    UNION ALL SELECT 'SEC-12', '12.ª Classe', 12
+) curriculum
+WHERE ne.codigo = 'SEC'
+ON DUPLICATE KEY UPDATE
+    nome = VALUES(nome),
+    ordem = VALUES(ordem);
+
+INSERT INTO disciplinas
+    (nivel_ensino_id, codigo, nome, estado)
+SELECT
+    ne.id, curriculum.codigo, curriculum.nome, 'activa'
+FROM niveis_ensino ne
+CROSS JOIN (
+    SELECT 'POR-SEC' AS codigo, 'Português' AS nome
+    UNION ALL SELECT 'ING-SEC', 'Inglês'
+    UNION ALL SELECT 'FRA-SEC', 'Francês'
+    UNION ALL SELECT 'HIS-SEC', 'História'
+    UNION ALL SELECT 'GEO-SEC', 'Geografia'
+    UNION ALL SELECT 'MAT-SEC', 'Matemática'
+    UNION ALL SELECT 'BIO-SEC', 'Biologia'
+    UNION ALL SELECT 'QUI-SEC', 'Química'
+    UNION ALL SELECT 'FIS-SEC', 'Física'
+    UNION ALL SELECT 'AGR-SEC', 'Agro-pecuária'
+    UNION ALL SELECT 'TIC-SEC', 'Tecnologias de Informação e Comunicação (TIC)'
+    UNION ALL SELECT 'EV-SEC', 'Educação Visual'
+    UNION ALL SELECT 'EF-SEC', 'Educação Física'
+    UNION ALL SELECT 'FIL-SEC', 'Filosofia'
+    UNION ALL SELECT 'GD-SEC', 'Geometria Descritiva'
+) curriculum
+WHERE ne.codigo = 'SEC'
+ON DUPLICATE KEY UPDATE
+    nome = VALUES(nome);
+
+INSERT IGNORE INTO classes_disciplinas (classe_id, disciplina_id)
+SELECT c.id, d.id
+FROM classes c
+INNER JOIN disciplinas d
+    ON d.nivel_ensino_id = c.nivel_ensino_id
+INNER JOIN niveis_ensino ne
+    ON ne.id = c.nivel_ensino_id
+WHERE ne.codigo = 'SEC'
+  AND (
+      (
+          c.codigo = 'SEC-07'
+          AND d.codigo IN (
+              'POR-SEC', 'ING-SEC', 'HIS-SEC', 'GEO-SEC', 'MAT-SEC',
+              'BIO-SEC', 'AGR-SEC', 'TIC-SEC', 'EV-SEC', 'EF-SEC'
+          )
+      )
+      OR (
+          c.codigo IN ('SEC-08', 'SEC-09')
+          AND d.codigo IN (
+              'POR-SEC', 'ING-SEC', 'FRA-SEC', 'HIS-SEC', 'GEO-SEC',
+              'MAT-SEC', 'BIO-SEC', 'QUI-SEC', 'FIS-SEC', 'AGR-SEC',
+              'TIC-SEC', 'EV-SEC', 'EF-SEC'
+          )
+      )
+      OR (
+          c.codigo IN ('SEC-10', 'SEC-11', 'SEC-12')
+          AND d.codigo IN (
+              'POR-SEC', 'ING-SEC', 'MAT-SEC', 'EF-SEC', 'TIC-SEC',
+              'GEO-SEC', 'HIS-SEC', 'FRA-SEC', 'FIL-SEC', 'BIO-SEC',
+              'QUI-SEC', 'FIS-SEC', 'EV-SEC', 'GD-SEC'
+          )
+      )
+  );
 
 INSERT IGNORE INTO alunos
     (codigo_central, nome_completo, data_nascimento, sexo,
@@ -435,10 +574,10 @@ WHERE e.codigo = 'SGECE-ESC-TESTE-01'
 LIMIT 1;
 
 INSERT IGNORE INTO matriculas
-    (aluno_escola_id, escola_id, turma_id, ano_lectivo_id,
+    (aluno_escola_id, escola_id, classe_id, turma_id, ano_lectivo_id,
      numero_processo, data_matricula, estado)
 SELECT
-    ae.id, e.id, t.id, al.id, 1, '2026-02-02', 'activa'
+    ae.id, e.id, c.id, t.id, al.id, 1, '2026-02-02', 'activa'
 FROM aluno_escolas ae
 INNER JOIN alunos a
     ON a.id = ae.aluno_id
@@ -447,6 +586,8 @@ INNER JOIN escolas e
 INNER JOIN turmas t
     ON t.escola_id = e.id
    AND t.identificacao = '8A-Teste'
+INNER JOIN classes c
+    ON c.id = t.classe_id
 INNER JOIN anos_lectivos al
     ON al.id = t.ano_lectivo_id
 WHERE a.codigo_central = 'SGECE-ALUNO-TESTE-001'
