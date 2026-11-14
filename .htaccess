@@ -1,0 +1,13 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    RewriteRule (^|/)\. - [F,L]
+    RewriteRule ^(app|config|database|routes|storage|vendor)(/|$) - [F,L,NC]
+    RewriteRule ^(composer\.(json|lock)|README\.md)$ - [F,L,NC]
+
+    RewriteRule ^public/assets/ index.php [QSA,L]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [QSA,L]
+</IfModule>

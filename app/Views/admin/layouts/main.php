@@ -17,6 +17,7 @@ $publicPath = $basePath . '/public';
 
 $nomeUsuario = $nomeUsuario ?? 'Utilizador';
 $nivelUsuario = $nivelUsuario ?? 'Escola';
+$csrfToken = $csrfToken ?? '';
 $pageTitle = $pageTitle ?? 'Painel de Controlo';
 $activeMenu = $activeMenu ?? 'dashboard';
 
@@ -59,7 +60,7 @@ $iniciais = strtoupper(
     <aside class="admin-sidebar" id="adminSidebar">
 
         <div class="sidebar-brand">
-            <a href="<?= $escape($basePath) ?>/admin" class="brand-link">
+            <a href="<?= $escape($basePath) ?>/admin/dashboard" class="brand-link">
 
                 <span class="brand-icon">
                     <i class="bi bi-mortarboard-fill"></i>
@@ -97,7 +98,7 @@ $iniciais = strtoupper(
 
         <nav class="sidebar-navigation">
 
-            <a href="<?= $escape($basePath) ?>/admin"
+            <a href="<?= $escape($basePath) ?>/admin/dashboard"
                class="sidebar-link <?= $activeMenu === 'dashboard' ? 'active' : '' ?>">
 
                 <i class="bi bi-grid-1x2-fill"></i>
@@ -239,13 +240,19 @@ $iniciais = strtoupper(
 
                 </div>
 
-                <a href="<?= $escape($basePath) ?>/logout"
-                   class="logout-button"
-                   title="Terminar sessão"
-                   aria-label="Terminar sessão">
-
-                    <i class="bi bi-box-arrow-right"></i>
-                </a>
+                <form action="<?= $escape($basePath) ?>/logout"
+                      method="post"
+                      class="logout-form">
+                    <input type="hidden"
+                           name="csrf_token"
+                           value="<?= $escape($csrfToken) ?>">
+                    <button type="submit"
+                            class="logout-button"
+                            title="Terminar sessão"
+                            aria-label="Terminar sessão">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </button>
+                </form>
 
             </div>
 

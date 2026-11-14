@@ -2,16 +2,12 @@
 
 use Dotenv\Dotenv;
 use App\Core\Router;
-use Config\Database;
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 try {
     $dotenv = Dotenv::createImmutable(dirname(__DIR__));
     $dotenv->load();
-
-    // Estabelecer ligação à base de dados
-    Database::connect();
 
     // Inicializar o sistema de rotas
     $router = new Router();

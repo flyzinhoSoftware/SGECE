@@ -355,8 +355,15 @@ a {
     place-items: center;
     border: 1px solid var(--admin-border);
     border-radius: 9px;
+    padding: 0;
+    background: transparent;
     color: #64748b;
     font-size: 17px;
+    cursor: pointer;
+}
+
+.logout-form {
+    margin: 0;
 }
 
 .logout-button:hover {

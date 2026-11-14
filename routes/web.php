@@ -15,5 +15,7 @@ $router->post('/portal/consultar', [PortalController::class, 'consultar']);
 
 
 // Área administrativa
-$router->get('/admin', [AdminController::class, 'index']);
+$router->get('/admin', [AdminController::class, 'login']);
+$router->post('/admin', [AdminController::class, 'login']);
 $router->get('/admin/dashboard', [AdminController::class, 'index']);
+$router->post('/logout', [AdminController::class, 'logout']);

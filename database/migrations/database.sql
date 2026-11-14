@@ -325,3 +325,125 @@ CREATE TABLE IF NOT EXISTS matriculas (
 -- =====================================================
 -- FIM DA PRIMEIRA ESTRUTURA
 -- =====================================================
+
+-- =====================================================
+-- DADOS GERAIS DE TESTE
+-- Os niveis de acesso e de ensino acima sao dados de referencia existentes.
+-- A tabela usuarios e apenas actualizada; nenhum utilizador e criado aqui.
+-- =====================================================
+
+INSERT IGNORE INTO escolas
+    (codigo, nome, tipo, provincia, distrito, localidade, estado)
+VALUES
+    ('SGECE-ESC-TESTE-01', 'Escola de Teste SGECE', 'Secundaria',
+     'Maputo', 'Maputo', 'Localidade de Teste', 'activa');
+
+UPDATE usuarios u
+INNER JOIN escolas e
+    ON e.codigo = 'SGECE-ESC-TESTE-01'
+INNER JOIN niveis_acesso na
+    ON na.nome = 'Admin'
+SET
+    u.escola_id = e.id,
+    u.nivel_acesso_id = na.id,
+    u.telefone = '841000002',
+    u.estado = 'activo'
+WHERE u.email = 'utilizador.teste@sgece.local';
+
+INSERT IGNORE INTO anos_lectivos
+    (ano, data_inicio, data_fim, estado)
+VALUES
+    (2026, '2026-01-01', '2026-12-31', 'activo');
+
+INSERT IGNORE INTO classes
+    (nivel_ensino_id, codigo, nome, ordem, estado)
+SELECT
+    ne.id, 'TESTE-8A', '8a Classe', 8, 'activa'
+FROM niveis_ensino ne
+WHERE ne.codigo = 'SEC'
+LIMIT 1;
+
+INSERT IGNORE INTO disciplinas
+    (nivel_ensino_id, codigo, nome, estado)
+SELECT
+    ne.id, 'MAT-TESTE', 'Matematica', 'activa'
+FROM niveis_ensino ne
+WHERE ne.codigo = 'SEC'
+LIMIT 1;
+
+INSERT IGNORE INTO classes_disciplinas
+    (classe_id, disciplina_id)
+SELECT
+    c.id, d.id
+FROM classes c
+INNER JOIN disciplinas d
+    ON d.codigo = 'MAT-TESTE'
+INNER JOIN niveis_ensino ne
+    ON ne.id = d.nivel_ensino_id
+WHERE c.codigo = 'TESTE-8A'
+  AND c.nivel_ensino_id = ne.id
+LIMIT 1;
+
+INSERT IGNORE INTO alunos
+    (codigo_central, nome_completo, data_nascimento, sexo,
+     bi_cifrado, bi_hash, nome_pai, nome_mae, contacto, endereco, estado)
+VALUES
+    ('SGECE-ALUNO-TESTE-001', 'Aluno de Teste SGECE', '2012-05-10',
+     'Feminino',
+     UNHEX('7385e09d6a814e121e3acd35de6c2fa7fa44ecdf3687e6cfc19d1f689ec3a64185898fc8ce532e166f9a8b3f6e8aa086'),
+     '323768fb6725179f3311f8c1af7e9dec1f6582649c374ad67e2d020d2a627f59',
+     'Pai de Teste', 'Mae de Teste', '840000001',
+     'Endereco ficticio para testes', 'activo');
+
+INSERT IGNORE INTO aluno_escolas
+    (aluno_id, escola_id, codigo_aluno_escola, data_entrada, estado)
+SELECT
+    a.id, e.id, 'SGECE-ALUNO-TESTE-001', '2026-02-02', 'activo'
+FROM alunos a
+INNER JOIN escolas e
+    ON e.codigo = 'SGECE-ESC-TESTE-01'
+WHERE a.codigo_central = 'SGECE-ALUNO-TESTE-001'
+LIMIT 1;
+
+INSERT IGNORE INTO turmas
+    (escola_id, classe_id, ano_lectivo_id, identificacao,
+     turno, capacidade, estado)
+SELECT
+    e.id, c.id, al.id, '8A-Teste', 'Manha', 40, 'activa'
+FROM escolas e
+INNER JOIN classes c
+    ON c.codigo = 'TESTE-8A'
+INNER JOIN anos_lectivos al
+    ON al.ano = 2026
+WHERE e.codigo = 'SGECE-ESC-TESTE-01'
+LIMIT 1;
+
+INSERT IGNORE INTO sequencias_processos
+    (escola_id, ano_lectivo_id, ultimo_numero)
+SELECT
+    e.id, al.id, 1
+FROM escolas e
+INNER JOIN anos_lectivos al
+    ON al.ano = 2026
+WHERE e.codigo = 'SGECE-ESC-TESTE-01'
+LIMIT 1;
+
+INSERT IGNORE INTO matriculas
+    (aluno_escola_id, escola_id, turma_id, ano_lectivo_id,
+     numero_processo, data_matricula, estado)
+SELECT
+    ae.id, e.id, t.id, al.id, 1, '2026-02-02', 'activa'
+FROM aluno_escolas ae
+INNER JOIN alunos a
+    ON a.id = ae.aluno_id
+INNER JOIN escolas e
+    ON e.id = ae.escola_id
+INNER JOIN turmas t
+    ON t.escola_id = e.id
+   AND t.identificacao = '8A-Teste'
+INNER JOIN anos_lectivos al
+    ON al.id = t.ano_lectivo_id
+WHERE a.codigo_central = 'SGECE-ALUNO-TESTE-001'
+  AND e.codigo = 'SGECE-ESC-TESTE-01'
+  AND al.ano = 2026
+LIMIT 1;
