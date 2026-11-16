@@ -102,10 +102,49 @@ também é actualizada. Como o número é previsível, não deve ser tratado com
 credencial definitiva. Um administrador não pode gerir contas Root, alterar o
 próprio nível de acesso ou desactivar a própria conta; a última conta Root
 activa também é protegida.
+Contas **Escola** iniciam sessão em `/escola/dashboard`, numa área limitada aos
+dados da escola associada; não têm acesso às rotas administrativas.
+
+## Funcionalidades da escola
+
+No painel da escola, **Pautas existentes** permite consultar as notas lançadas
+por classe, turma, disciplina e período (1.º, 2.º, 3.º trimestre ou anual).
+Para introduzir ou actualizar notas, use **Lançar pauta** e seleccione classe,
+turma e disciplina, por esta ordem.
+Registe duas ACS e uma avaliação provincial, cada uma de 0 a 20, por aluno. A
+média do trimestre só é calculada quando as três notas estão preenchidas e a
+média anual só aparece quando os três trimestres têm média. As pautas existentes
+podem ser descarregadas em PDF por disciplina, como pauta geral trimestral ou
+como pauta anual. As pautas gerais organizam os alunos em tabelas separadas por
+disciplina, com as três avaliações e a média trimestral; no fim, apresentam a
+média final e o resultado de cada estudante. A pauta anual agrupa A1, A2, A3 e
+média por trimestre em cada disciplina, com a média final anual e o resultado
+num quadro de resumo.
+A média mínima para aprovação é 10 valores; as pautas ficam provisórias enquanto
+houver notas em falta.
+
+Em **Pedidos de documentos**, a escola pode solicitar certificados ou
+declarações para alunos associados à própria escola e acompanhar o estado e a
+resposta administrativa. O protocolo permite imprimir o recibo do pedido; após
+a emissão, o mesmo recibo inclui o código e o endereço de validação para o
+aluno consultar a autenticidade em `/validar-documento`. O administrador
+acompanha a fila em **Pedidos das escolas**, encaminha pedidos para análise e
+regista emissão ou rejeição; a rejeição exige uma justificação e a emissão
+exige o texto validado. Ao emitir, o SGECE gera e arquiva o PDF com o brasão da
+República de Moçambique, atribui um código de validação e disponibiliza o
+descarregamento à escola. O documento também pode ser consultado no portal
+público com o código do aluno e a data de nascimento.
+
+Em bases de dados existentes, aplique por ordem
+`database/migrations/add_school_grades_and_document_requests.sql` e
+`database/migrations/add_assessment_scores_and_issued_pdfs.sql`. A estrutura
+completa em `database/migrations/database.sql` também inclui os novos campos.
+As rotas da escola e os formulários usam isolamento pela escola associada,
+consultas parametrizadas e protecção CSRF.
 
 A dashboard continua a ser a página inicial. Os links administrativos abrem
-o conteúdo correspondente na área central do mesmo layout; os outros módulos
-ainda não integrados continuam como páginas estáticas informativas.
+o conteúdo correspondente na área central do mesmo layout; auditoria e
+configurações continuam como páginas informativas.
 
 Cada sessão pode fazer até 100 requisições à aplicação em 60 segundos,
 incluindo páginas e assets locais. A requisição seguinte recebe HTTP 429,

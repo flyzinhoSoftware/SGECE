@@ -3,6 +3,7 @@
 use App\Controllers\PortalController;
 
 use App\Controllers\AdminController;
+use App\Controllers\SchoolController;
 
 // Página inicial pública
 $router->get('/', [PortalController::class, 'index']);
@@ -12,12 +13,25 @@ $router->get('/portal', [PortalController::class, 'index']);
 
 // Consulta de disponibilidade de documentos
 $router->post('/portal/consultar', [PortalController::class, 'consultar']);
+$router->get('/portal/documento', [PortalController::class, 'downloadIssuedDocument']);
+$router->get('/validar-documento', [PortalController::class, 'verifyDocument']);
 
 
 // Área administrativa
 $router->get('/admin', [AdminController::class, 'login']);
 $router->post('/admin', [AdminController::class, 'login']);
 $router->get('/admin/dashboard', [AdminController::class, 'index']);
+$router->get('/escola', [SchoolController::class, 'dashboard']);
+$router->get('/escola/dashboard', [SchoolController::class, 'dashboard']);
+$router->get('/escola/notas', [SchoolController::class, 'grades']);
+$router->get('/escola/notas/lancar', [SchoolController::class, 'launchGrades']);
+$router->post('/escola/notas/lancar', [SchoolController::class, 'saveGrades']);
+$router->get('/escola/notas/pauta.pdf', [SchoolController::class, 'downloadGradeReport']);
+$router->get('/escola/notas/pauta-geral.pdf', [SchoolController::class, 'downloadGeneralGradeReport']);
+$router->get('/escola/notas/pauta-anual.pdf', [SchoolController::class, 'downloadAnnualGradeReport']);
+$router->get('/escola/pedidos-documentos', [SchoolController::class, 'documentRequests']);
+$router->post('/escola/pedidos-documentos', [SchoolController::class, 'saveDocumentRequest']);
+$router->get('/escola/pedidos-documentos/recibo.pdf', [SchoolController::class, 'downloadDocumentRequestReceipt']);
 $router->get('/admin/escolas', [AdminController::class, 'schools']);
 $router->post('/admin/escolas', [AdminController::class, 'saveSchool']);
 $router->post('/admin/escolas/estado', [AdminController::class, 'updateSchoolStatus']);
@@ -34,6 +48,8 @@ $router->get('/admin/gestao-academica', [AdminController::class, 'academic']);
 $router->post('/admin/gestao-academica/anos', [AdminController::class, 'saveAcademicYear']);
 $router->post('/admin/gestao-academica/classes', [AdminController::class, 'saveAcademicClass']);
 $router->post('/admin/gestao-academica/disciplinas', [AdminController::class, 'saveAcademicDiscipline']);
+$router->get('/admin/pedidos-documentos', [AdminController::class, 'documentRequests']);
+$router->post('/admin/pedidos-documentos/estado', [AdminController::class, 'updateDocumentRequest']);
 
 $staticAdminPages = [
     '/admin/certificados' => 'certificates',

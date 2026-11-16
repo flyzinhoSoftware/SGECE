@@ -16,7 +16,9 @@ $basePath = rtrim($basePath, '/');
 $publicPath = $basePath . '/public';
 
 $nomeUsuario = $nomeUsuario ?? 'Utilizador';
-$nivelUsuario = $nivelUsuario ?? 'Escola';
+$nivelUsuario = $nivelUsuario ?? 'Admin';
+$isSchoolUser = $nivelUsuario === 'Escola';
+$homePath = $basePath . ($isSchoolUser ? '/escola/dashboard' : '/admin/dashboard');
 $csrfToken = $csrfToken ?? '';
 $pageTitle = $pageTitle ?? 'Painel de Controlo';
 $activeMenu = $activeMenu ?? 'dashboard';
@@ -67,7 +69,7 @@ $iniciais = strtoupper(
     <aside class="admin-sidebar" id="adminSidebar">
 
         <div class="sidebar-brand">
-            <a href="<?= $escape($basePath) ?>/admin/dashboard" class="brand-link">
+            <a href="<?= $escape($homePath) ?>" class="brand-link">
 
                 <span class="brand-icon">
                     <i class="bi bi-mortarboard-fill"></i>
@@ -75,7 +77,7 @@ $iniciais = strtoupper(
 
                 <span class="brand-label">
                     <strong>SGECE</strong>
-                    <small>Administração</small>
+                    <small><?= $isSchoolUser ? 'Área da Escola' : 'Administração' ?></small>
                 </span>
 
             </a>
@@ -105,13 +107,38 @@ $iniciais = strtoupper(
 
         <nav class="sidebar-navigation">
 
-            <a href="<?= $escape($basePath) ?>/admin/dashboard"
-               class="sidebar-link <?= $activeMenu === 'dashboard' ? 'active' : '' ?>">
+            <a href="<?= $escape($homePath) ?>"
+               class="sidebar-link <?= in_array($activeMenu, ['dashboard', 'school-dashboard'], true)
+                    ? 'active'
+                    : '' ?>">
 
                 <i class="bi bi-grid-1x2-fill"></i>
-                <span>Painel de controlo</span>
+                <span><?= $isSchoolUser ? 'Painel da escola' : 'Painel de controlo' ?></span>
             </a>
 
+            <?php if ($isSchoolUser): ?>
+
+            <div class="sidebar-section-label">GESTÃO ESCOLAR</div>
+
+            <a href="<?= $escape($basePath) ?>/escola/notas"
+               class="sidebar-link <?= $activeMenu === 'school-grades' ? 'active' : '' ?>">
+                <i class="bi bi-journal-check"></i>
+                <span>Pautas</span>
+            </a>
+
+            <a href="<?= $escape($basePath) ?>/escola/notas/lancar"
+               class="sidebar-link <?= $activeMenu === 'school-grade-launch' ? 'active' : '' ?>">
+                <i class="bi bi-pencil-square"></i>
+                <span>Lançamento de notas</span>
+            </a>
+
+            <a href="<?= $escape($basePath) ?>/escola/pedidos-documentos"
+               class="sidebar-link <?= $activeMenu === 'school-documents' ? 'active' : '' ?>">
+                <i class="bi bi-file-earmark-text"></i>
+                <span>Pedidos de documentos</span>
+            </a>
+
+            <?php else: ?>
 
             <div class="sidebar-section-label">GESTÃO ESCOLAR</div>
 
@@ -154,6 +181,12 @@ $iniciais = strtoupper(
                 <span>Declarações</span>
             </a>
 
+            <a href="<?= $escape($basePath) ?>/admin/pedidos-documentos"
+               class="sidebar-link <?= $activeMenu === 'document-requests' ? 'active' : '' ?>">
+                <i class="bi bi-inboxes"></i>
+                <span>Pedidos das escolas</span>
+            </a>
+
             <a href="<?= $escape($basePath) ?>/admin/validacoes"
                class="sidebar-link <?= $activeMenu === 'validations' ? 'active' : '' ?>">
                 <i class="bi bi-patch-check"></i>
@@ -181,6 +214,8 @@ $iniciais = strtoupper(
                 <span>Configurações</span>
             </a>
 
+            <?php endif; ?>
+
         </nav>
 
 
@@ -191,7 +226,7 @@ $iniciais = strtoupper(
 
             <div>
                 <strong>SGECE</strong>
-                <small>Ambiente administrativo</small>
+                <small><?= $isSchoolUser ? 'Ambiente escolar' : 'Ambiente administrativo' ?></small>
             </div>
         </div>
 

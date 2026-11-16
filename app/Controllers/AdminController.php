@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Session;
+use App\Services\SchoolPdfGenerator;
 use Config\Database;
 
 class AdminController extends Controller
@@ -57,8 +58,9 @@ class AdminController extends Controller
         $this->startSession();
         $this->preventCaching();
 
-        if ($this->authenticatedAdministrator() !== null) {
-            $this->redirect('/admin/dashboard');
+        $authenticatedUser = $this->authenticatedUser();
+        if ($authenticatedUser !== null) {
+            $this->redirect($this->dashboardPathFor($authenticatedUser['nivel']));
         }
 
         if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
@@ -88,18 +90,33 @@ class AdminController extends Controller
                     $erro = 'E-mail ou palavra-passe inválidos.';
                 } else {
                     $statement = Database::connect()->prepare(
-                        "SELECT u.id, u.nome, u.email, u.palavra_passe, na.nome AS nivel
+                        "SELECT u.id, u.nome, u.email, u.palavra_passe,
+                                u.escola_id, na.nome AS nivel,
+                                e.estado AS escola_estado
                          FROM usuarios u
                          INNER JOIN niveis_acesso na ON na.id = u.nivel_acesso_id
+                         LEFT JOIN escolas e ON e.id = u.escola_id
                          WHERE u.email = :email
                            AND u.estado = 'activo'
-                           AND na.nome IN ('Root', 'Admin')
+                           AND na.nome IN ('Root', 'Admin', 'Escola')
                          LIMIT 1"
                     );
                     $statement->execute(['email' => $email]);
                     $user = $statement->fetch();
 
-                    if ($user && password_verify($password, $user['palavra_passe'])) {
+                    $schoolAccessIsValid = $user !== false &&
+                        (
+                            $user['nivel'] !== 'Escola' ||
+                            (
+                                $user['escola_id'] !== null &&
+                                $user['escola_estado'] === 'activa'
+                            )
+                        );
+                    if (
+                        $user &&
+                        $schoolAccessIsValid &&
+                        password_verify($password, $user['palavra_passe'])
+                    ) {
                         $updateLastAccess = Database::connect()->prepare(
                             'UPDATE usuarios SET ultimo_acesso = CURRENT_TIMESTAMP WHERE id = :id'
                         );
@@ -113,7 +130,7 @@ class AdminController extends Controller
                         ];
                         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
-                        $this->redirect('/admin/dashboard');
+                        $this->redirect($this->dashboardPathFor($user['nivel']));
                     }
 
                     $erro = 'E-mail ou palavra-passe inválidos.';
@@ -1154,22 +1171,160 @@ class AdminController extends Controller
         $this->redirect('/admin/gestao-academica#disciplinas');
     }
 
+    public function documentRequests(): void
+    {
+        $user = $this->requireAdministrator();
+        $this->renderDocumentRequestsPage($user, null);
+    }
+
+    public function updateDocumentRequest(): void
+    {
+        $user = $this->requireAdministrator();
+        if (!$this->hasValidCsrfToken()) {
+            return;
+        }
+
+        $requestId = filter_var($_POST['pedido_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1]
+        ]);
+        $newStatus = $this->postedString('estado') ?? '';
+        $response = $this->postedString('resposta_admin') ?? '';
+        $documentContent = $this->postedString('conteudo_documento') ?? '';
+        $responseLength = preg_match_all('/./us', $response);
+        $documentContentLength = preg_match_all('/./us', $documentContent);
+        if (
+            $requestId === false
+            || !in_array($newStatus, ['em_analise', 'emitido', 'rejeitado'], true)
+            || $responseLength === false
+            || $responseLength > 500
+            || ($newStatus === 'rejeitado' && $responseLength < 5)
+            || $documentContentLength === false
+            || (
+                $newStatus === 'emitido'
+                && ($documentContentLength < 10 || $documentContentLength > 3000)
+            )
+        ) {
+            $_SESSION['_document_requests_flash'] = [
+                'type' => 'danger',
+                'message' => 'Para rejeitar, indique o motivo; para emitir, preencha o texto validado do documento.'
+            ];
+            $this->redirect('/admin/pedidos-documentos');
+        }
+
+        $database = Database::connect();
+        $database->beginTransaction();
+        try {
+            $currentRequest = $database->prepare(
+                'SELECT pd.estado, pd.codigo, pd.tipo_documento,
+                        a.nome_completo AS aluno_nome, a.codigo_central,
+                        e.nome AS escola_nome, e.distrito AS escola_distrito,
+                        e.provincia AS escola_provincia
+                 FROM pedidos_documentos pd
+                 INNER JOIN aluno_escolas ae ON ae.id = pd.aluno_escola_id
+                 INNER JOIN alunos a ON a.id = ae.aluno_id
+                 INNER JOIN escolas e ON e.id = pd.escola_id
+                 WHERE pd.id = :id
+                 FOR UPDATE'
+            );
+            $currentRequest->execute(['id' => $requestId]);
+            $request = $currentRequest->fetch();
+            $currentStatus = $request['estado'] ?? false;
+            $allowedTransitions = [
+                'pendente' => ['em_analise', 'rejeitado'],
+                'em_analise' => ['emitido', 'rejeitado']
+            ];
+            if (
+                $currentStatus === false
+                || !in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)
+            ) {
+                $database->rollBack();
+                $_SESSION['_document_requests_flash'] = [
+                    'type' => 'warning',
+                    'message' => 'O pedido já foi concluído ou não permite essa transição.'
+                ];
+                $this->redirect('/admin/pedidos-documentos');
+            }
+
+            $terminal = in_array($newStatus, ['emitido', 'rejeitado'], true);
+            if ($newStatus === 'emitido') {
+                $validationCode = strtoupper(bin2hex(random_bytes(16)));
+                $issuedAt = date('Y-m-d H:i:s');
+                $pdf = (new SchoolPdfGenerator())->issuedDocument([
+                    'tipo_documento' => $request['tipo_documento'],
+                    'codigo' => $request['codigo'],
+                    'codigo_validacao' => $validationCode,
+                    'aluno_nome' => $request['aluno_nome'],
+                    'codigo_central' => $request['codigo_central'],
+                    'escola_nome' => $request['escola_nome'],
+                    'escola_distrito' => $request['escola_distrito'],
+                    'escola_provincia' => $request['escola_provincia'],
+                    'conteudo_documento' => $documentContent,
+                    'emitido_em' => date('d/m/Y')
+                ]);
+                $update = $database->prepare(
+                    'UPDATE pedidos_documentos
+                     SET estado = :estado,
+                         analisado_por = :analisado_por,
+                         resposta_admin = COALESCE(:resposta_admin, resposta_admin),
+                         conteudo_documento = :conteudo_documento,
+                         codigo_validacao = :codigo_validacao,
+                         documento_pdf = :documento_pdf,
+                         emitido_em = :emitido_em,
+                         concluido_em = :concluido_em
+                     WHERE id = :id'
+                );
+                $update->execute([
+                    'estado' => $newStatus,
+                    'analisado_por' => (int) $user['id'],
+                    'resposta_admin' => $response === '' ? null : $response,
+                    'conteudo_documento' => $documentContent,
+                    'codigo_validacao' => $validationCode,
+                    'documento_pdf' => $pdf,
+                    'emitido_em' => $issuedAt,
+                    'concluido_em' => $issuedAt,
+                    'id' => $requestId
+                ]);
+            } else {
+                $update = $database->prepare(
+                    'UPDATE pedidos_documentos
+                     SET estado = :estado,
+                         analisado_por = :analisado_por,
+                         resposta_admin = COALESCE(:resposta_admin, resposta_admin),
+                         concluido_em = ' . ($terminal ? 'CURRENT_TIMESTAMP' : 'NULL') . '
+                     WHERE id = :id'
+                );
+                $update->execute([
+                    'estado' => $newStatus,
+                    'analisado_por' => (int) $user['id'],
+                    'resposta_admin' => $response === '' ? null : $response,
+                    'id' => $requestId
+                ]);
+            }
+            $database->commit();
+        } catch (\Throwable $exception) {
+            if ($database->inTransaction()) {
+                $database->rollBack();
+            }
+            throw $exception;
+        }
+
+        $_SESSION['_document_requests_flash'] = [
+            'type' => 'success',
+            'message' => 'O estado do pedido foi actualizado.'
+        ];
+        $this->redirect('/admin/pedidos-documentos');
+    }
+
     public function staticPage(string $slug): void
     {
         $user = $this->requireAdministrator();
+        if (in_array($slug, ['certificates', 'declarations'], true)) {
+            $type = $slug === 'certificates' ? 'certificado' : 'declaracao';
+            $this->renderDocumentRequestsPage($user, $type);
+            return;
+        }
+
         $pages = [
-            'certificates' => [
-                'title' => 'Certificados',
-                'icon' => 'bi-file-earmark-text',
-                'description' => 'Área de preparação e emissão de certificados escolares.',
-                'items' => ['Pedidos de certificado', 'Emissão de documentos', 'Histórico de certificados']
-            ],
-            'declarations' => [
-                'title' => 'Declarações',
-                'icon' => 'bi-file-earmark-check',
-                'description' => 'Área de preparação e emissão de declarações escolares.',
-                'items' => ['Pedidos de declaração', 'Emissão de documentos', 'Histórico de declarações']
-            ],
             'validations' => [
                 'title' => 'Validações',
                 'icon' => 'bi-patch-check',
@@ -2258,7 +2413,7 @@ class AdminController extends Controller
         $this->redirect('/admin');
     }
 
-    private function authenticatedAdministrator(): ?array
+    private function authenticatedUser(): ?array
     {
         $auth = $_SESSION['auth'] ?? null;
 
@@ -2278,18 +2433,33 @@ class AdminController extends Controller
         }
 
         $statement = Database::connect()->prepare(
-            "SELECT u.id, u.nome, u.email, na.nome AS nivel
+            "SELECT u.id, u.nome, u.email, u.escola_id, na.nome AS nivel,
+                    e.estado AS escola_estado
              FROM usuarios u
              INNER JOIN niveis_acesso na ON na.id = u.nivel_acesso_id
+             LEFT JOIN escolas e ON e.id = u.escola_id
              WHERE u.id = :id
                AND u.estado = 'activo'
-               AND na.nome IN ('Root', 'Admin')
              LIMIT 1"
         );
         $statement->execute(['id' => $userId]);
         $user = $statement->fetch();
 
         if (!$user) {
+            $this->invalidateAuthentication();
+            return null;
+        }
+
+        if (
+            !in_array($user['nivel'], ['Root', 'Admin', 'Escola'], true) ||
+            (
+                $user['nivel'] === 'Escola' &&
+                (
+                    $user['escola_id'] === null ||
+                    $user['escola_estado'] !== 'activa'
+                )
+            )
+        ) {
             $this->invalidateAuthentication();
             return null;
         }
@@ -2303,11 +2473,100 @@ class AdminController extends Controller
         return $user;
     }
 
+    private function authenticatedAdministrator(): ?array
+    {
+        $user = $this->authenticatedUser();
+
+        return $user !== null && in_array($user['nivel'], ['Root', 'Admin'], true)
+            ? $user
+            : null;
+    }
+
     private function invalidateAuthentication(): void
     {
         unset($_SESSION['auth']);
         session_regenerate_id(true);
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+
+    private function renderDocumentRequestsPage(array $user, ?string $fixedType): void
+    {
+        if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+
+        $allowedTypes = ['certificado', 'declaracao'];
+        $allowedStatuses = ['pendente', 'em_analise', 'emitido', 'rejeitado'];
+        $requestedType = $_GET['tipo'] ?? '';
+        $type = $fixedType ?? (
+            is_string($requestedType) && in_array($requestedType, $allowedTypes, true)
+                ? $requestedType
+                : ''
+        );
+        $requestedStatus = $_GET['estado'] ?? '';
+        $status = is_string($requestedStatus)
+            && in_array($requestedStatus, $allowedStatuses, true)
+                ? $requestedStatus
+                : '';
+
+        $conditions = [];
+        $parameters = [];
+        if ($type !== '') {
+            $conditions[] = 'pd.tipo_documento = :tipo_documento';
+            $parameters['tipo_documento'] = $type;
+        }
+        if ($status !== '') {
+            $conditions[] = 'pd.estado = :estado';
+            $parameters['estado'] = $status;
+        }
+        $where = $conditions === [] ? '' : ' WHERE ' . implode(' AND ', $conditions);
+        $statement = Database::connect()->prepare(
+            'SELECT pd.id, pd.codigo, pd.tipo_documento, pd.motivo, pd.estado,
+                    pd.resposta_admin, pd.codigo_validacao, pd.emitido_em,
+                    pd.solicitado_em, pd.concluido_em,
+                    e.nome AS escola_nome, a.nome_completo AS aluno_nome,
+                    a.codigo_central, solicitante.nome AS solicitante_nome
+             FROM pedidos_documentos pd
+             INNER JOIN escolas e ON e.id = pd.escola_id
+             INNER JOIN aluno_escolas ae ON ae.id = pd.aluno_escola_id
+             INNER JOIN alunos a ON a.id = ae.aluno_id
+             INNER JOIN usuarios solicitante ON solicitante.id = pd.solicitado_por'
+             . $where .
+            " ORDER BY CASE pd.estado
+                    WHEN 'pendente' THEN 0
+                    WHEN 'em_analise' THEN 1
+                    ELSE 2
+                END, pd.solicitado_em DESC, pd.id DESC"
+        );
+        $statement->execute($parameters);
+
+        $flash = $_SESSION['_document_requests_flash'] ?? null;
+        unset($_SESSION['_document_requests_flash']);
+        $pageTitle = $type === 'certificado'
+            ? 'Pedidos de certificados'
+            : ($type === 'declaracao' ? 'Pedidos de declarações' : 'Pedidos de documentos');
+        $activeMenu = $type === 'certificado'
+            ? 'certificates'
+            : ($type === 'declaracao' ? 'declarations' : 'document-requests');
+
+        ob_start();
+        $this->view('admin/document-requests', [
+            'requests' => $statement->fetchAll(),
+            'pageTitle' => $pageTitle,
+            'selectedType' => $type,
+            'selectedStatus' => $status,
+            'flash' => is_array($flash) ? $flash : null,
+            'csrfToken' => $_SESSION['csrf_token'] ?? '',
+            'basePath' => $this->basePath(),
+            'statusLabels' => [
+                'pendente' => 'Pendente',
+                'em_analise' => 'Em análise',
+                'emitido' => 'Emitido',
+                'rejeitado' => 'Rejeitado'
+            ]
+        ]);
+        $content = ob_get_clean();
+        $this->renderAdminLayout($user, $pageTitle, $activeMenu, $content);
     }
 
     private function requireAdministrator(): array
@@ -3846,6 +4105,17 @@ class AdminController extends Controller
     {
         header('Location: ' . $this->basePath() . $path);
         exit;
+    }
+
+    private function dashboardPathFor(string $accessLevel): string
+    {
+        return match ($accessLevel) {
+            'Root', 'Admin' => '/admin/dashboard',
+            'Escola' => '/escola/dashboard',
+            default => throw new \LogicException(
+                'Nível de acesso sem página inicial configurada.'
+            )
+        };
     }
 
     private function basePath(): string

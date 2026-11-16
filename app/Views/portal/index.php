@@ -21,8 +21,8 @@ $escape = static function ($value): string {
 };
 
 $csrfToken = $csrfToken ?? ($_SESSION['csrf_token'] ?? '');
-$mensagem = $mensagem ?? null;
-$erro = $erro ?? null;
+$feedback = $feedback ?? null;
+$documentos = is_array($documentos ?? null) ? $documentos : [];
 ?>
 
 <!DOCTYPE html>
@@ -357,15 +357,47 @@ $erro = $erro ?? null;
                             </div>
                         </div>
 
-                        <?php if (!empty($mensagem)): ?>
-                            <div class="alert alert-success" role="alert">
-                                <?= $escape($mensagem) ?>
+                        <?php if (is_array($feedback)): ?>
+                            <?php
+                            $feedbackType = $feedback['tipo'] ?? 'info';
+                            $feedbackClass = in_array($feedbackType, ['success', 'warning', 'danger', 'info'], true)
+                                ? $feedbackType
+                                : 'info';
+                            ?>
+                            <div class="alert alert-<?= $escape($feedbackClass) ?>" role="status">
+                                <strong><?= $escape($feedback['titulo'] ?? '') ?></strong>
+                                <div><?= $escape($feedback['mensagem'] ?? '') ?></div>
                             </div>
                         <?php endif; ?>
 
-                        <?php if (!empty($erro)): ?>
-                            <div class="alert alert-danger" role="alert">
-                                <?= $escape($erro) ?>
+                        <?php if ($documentos !== []): ?>
+                            <div class="list-group mb-4">
+                                <?php foreach ($documentos as $documento): ?>
+                                    <?php
+                                    $documentLabel = $documento['tipo_documento'] === 'certificado'
+                                        ? 'Certificado escolar'
+                                        : 'Declaração escolar';
+                                    ?>
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                                            <div>
+                                                <strong><?= $escape($documentLabel) ?></strong>
+                                                <div class="small text-muted">
+                                                    <?= $escape($documento['escola_nome']) ?>
+                                                    · <?= $escape($documento['emitido_em']) ?>
+                                                </div>
+                                            </div>
+                                            <a class="btn btn-sm btn-primary"
+                                               href="<?= $escape($appBaseUrl) ?>/portal/documento?codigo=<?= $escape(urlencode($documento['codigo_validacao'])) ?>">
+                                                <i class="bi bi-download me-1"></i>Descarregar PDF
+                                            </a>
+                                        </div>
+                                        <a class="small d-inline-block mt-2"
+                                           href="<?= $escape($appBaseUrl) ?>/validar-documento?codigo=<?= $escape(urlencode($documento['codigo_validacao'])) ?>">
+                                            Validar autenticidade
+                                        </a>
+                                    </div>
+                                <?php endforeach; ?>
                             </div>
                         <?php endif; ?>
 
@@ -442,7 +474,7 @@ $erro = $erro ?? null;
 
                             <p class="form-privacy">
                                 <i class="bi bi-lock-fill"></i>
-                                A consulta não permite descarregar documentos.
+                                Só são apresentados documentos emitidos após validação administrativa.
                             </p>
 
                         </form>

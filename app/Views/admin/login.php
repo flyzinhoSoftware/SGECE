@@ -108,6 +108,9 @@ function loginEscape($value): string
                                 <i class="bi bi-eye"></i>
                             </button>
                         </div>
+                        <small class="form-text text-muted">
+                            Para contas Escola, introduza apenas os dígitos do telefone cadastrado.
+                        </small>
                     </div>
 
                     <button type="submit" class="btn-login" id="loginButton">

@@ -6,13 +6,13 @@ class View
 {
     public static function render(string $view, array $data = []): void
     {
-        $basePath = realpath(__DIR__ . '/../Views');
+        $viewsDirectory = realpath(__DIR__ . '/../Views');
         $filePath = realpath(__DIR__ . '/../Views/' . $view . '.php');
 
         if (
-            $basePath === false ||
+            $viewsDirectory === false ||
             $filePath === false ||
-            !str_starts_with($filePath, $basePath . DIRECTORY_SEPARATOR) ||
+            !str_starts_with($filePath, $viewsDirectory . DIRECTORY_SEPARATOR) ||
             !is_file($filePath)
         ) {
             throw new \RuntimeException(
