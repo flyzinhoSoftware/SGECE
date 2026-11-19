@@ -401,7 +401,10 @@ $statusLabels = [
             <div class="modal-header">
                 <div>
                     <h2 class="modal-title fs-5" id="academicYearModalLabel">Novo ano lectivo</h2>
-                    <p class="mb-0 mt-1 text-muted">Ao activar um ano, os outros anos activos serão encerrados.</p>
+                    <p class="mb-0 mt-1 text-muted">
+                        O ano abre automaticamente a 14 de Fevereiro, com data final a 20 de Dezembro.
+                        O fecho depende das notas completas do 3.º trimestre.
+                    </p>
                 </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>

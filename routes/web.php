@@ -23,6 +23,10 @@ $router->post('/admin', [AdminController::class, 'login']);
 $router->get('/admin/dashboard', [AdminController::class, 'index']);
 $router->get('/escola', [SchoolController::class, 'dashboard']);
 $router->get('/escola/dashboard', [SchoolController::class, 'dashboard']);
+$router->get('/escola/alunos', [SchoolController::class, 'students']);
+$router->post('/escola/alunos', [SchoolController::class, 'saveStudent']);
+$router->get('/escola/matriculas', [SchoolController::class, 'enrollments']);
+$router->post('/escola/matriculas', [SchoolController::class, 'saveEnrollment']);
 $router->get('/escola/notas', [SchoolController::class, 'grades']);
 $router->get('/escola/notas/lancar', [SchoolController::class, 'launchGrades']);
 $router->post('/escola/notas/lancar', [SchoolController::class, 'saveGrades']);
@@ -31,6 +35,7 @@ $router->get('/escola/notas/pauta-geral.pdf', [SchoolController::class, 'downloa
 $router->get('/escola/notas/pauta-anual.pdf', [SchoolController::class, 'downloadAnnualGradeReport']);
 $router->get('/escola/pedidos-documentos', [SchoolController::class, 'documentRequests']);
 $router->post('/escola/pedidos-documentos', [SchoolController::class, 'saveDocumentRequest']);
+$router->post('/escola/pedidos-documentos/emitir', [SchoolController::class, 'issueDocumentRequest']);
 $router->get('/escola/pedidos-documentos/recibo.pdf', [SchoolController::class, 'downloadDocumentRequestReceipt']);
 $router->get('/admin/escolas', [AdminController::class, 'schools']);
 $router->post('/admin/escolas', [AdminController::class, 'saveSchool']);

@@ -82,11 +82,17 @@ $escape = static function ($value): string {
         <div class="card-body p-4">
             <h2 class="h5 mb-3" id="school-actions-heading">Gestão da escola</h2>
             <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-primary" href="<?= $escape($basePath) ?>/escola/alunos">
+                    <i class="bi bi-person-plus me-1"></i>Registar alunos
+                </a>
+                <a class="btn btn-outline-primary" href="<?= $escape($basePath) ?>/escola/matriculas">
+                    <i class="bi bi-calendar-plus me-1"></i>Matricular alunos
+                </a>
                 <a class="btn btn-primary" href="<?= $escape($basePath) ?>/escola/notas">
                     <i class="bi bi-journal-check me-1"></i>Registar notas
                 </a>
                 <a class="btn btn-outline-primary" href="<?= $escape($basePath) ?>/escola/pedidos-documentos">
-                    <i class="bi bi-file-earmark-text me-1"></i>Pedir certificado ou declaração
+                    <i class="bi bi-file-earmark-text me-1"></i>Pedir documentos escolares
                 </a>
             </div>
         </div>

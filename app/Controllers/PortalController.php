@@ -178,7 +178,11 @@ class PortalController extends Controller
             return;
         }
 
-        $type = $document['tipo_documento'] === 'certificado' ? 'certificado' : 'declaracao';
+        $type = match ($document['tipo_documento']) {
+            'certificado' => 'certificado',
+            'declaracao_notas' => 'declaracao-notas',
+            default => 'declaracao'
+        };
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="sgece-' . $type . '-' . $code . '.pdf"');
         header('Content-Length: ' . strlen($document['documento_pdf']));

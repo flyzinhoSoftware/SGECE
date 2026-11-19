@@ -5,12 +5,15 @@ $escape = static function ($value): string {
 $statusClasses = [
     'pendente' => 'warning',
     'em_analise' => 'info',
+    'aprovado' => 'primary',
     'emitido' => 'success',
     'rejeitado' => 'danger'
 ];
 $typeLabels = [
     'certificado' => 'Certificado',
-    'declaracao' => 'Declaração'
+    'declaracao' => 'Declaração anual',
+    'declaracao_notas' => 'Declaração de notas',
+    'declaracoes' => 'Todas as declarações'
 ];
 ?>
 <section>
@@ -103,7 +106,7 @@ $typeLabels = [
                                     <span class="badge text-bg-<?= $escape($statusClasses[$request['estado']] ?? 'secondary') ?>">
                                         <?= $escape($statusLabels[$request['estado']] ?? $request['estado']) ?>
                                     </span>
-                                    <?php if (in_array($request['estado'], ['pendente', 'em_analise'], true)): ?>
+                                    <?php if (in_array($request['estado'], ['pendente', 'em_analise', 'aprovado'], true)): ?>
                                         <form method="post" action="<?= $escape($basePath) ?>/admin/pedidos-documentos/estado"
                                               class="mt-2">
                                             <input type="hidden" name="csrf_token" value="<?= $escape($csrfToken) ?>">
@@ -116,28 +119,25 @@ $typeLabels = [
                                                 <?php if ($request['estado'] === 'pendente'): ?>
                                                     <option value="em_analise">Em análise</option>
                                                     <option value="rejeitado">Rejeitar</option>
+                                                <?php elseif ($request['estado'] === 'em_analise'): ?>
+                                                    <option value="aprovado">Aprovar para emissão</option>
+                                                    <option value="rejeitado">Rejeitar</option>
                                                 <?php else: ?>
-                                                    <option value="emitido">Emitido</option>
+                                                    <option value="emitido">Emitir documento</option>
                                                     <option value="rejeitado">Rejeitar</option>
                                                 <?php endif; ?>
                                             </select>
                                             <label class="visually-hidden" for="resposta-<?= (int) $request['id'] ?>">
-                                                Nota da análise ou motivo de rejeição
+                                                Nota para a escola ou motivo de rejeição
                                             </label>
                                             <textarea class="form-control form-control-sm mb-2"
                                                       id="resposta-<?= (int) $request['id'] ?>"
                                                       name="resposta_admin" rows="2" maxlength="500"
-                                                      placeholder="Nota da análise; obrigatória ao rejeitar"></textarea>
-                                            <label class="form-label small mb-1"
-                                                   for="conteudo-<?= (int) $request['id'] ?>">
-                                                Texto validado para o PDF (obrigatório ao emitir)
-                                            </label>
-                                            <textarea class="form-control form-control-sm mb-2"
-                                                      id="conteudo-<?= (int) $request['id'] ?>"
-                                                      name="conteudo_documento" rows="4" maxlength="3000"
-                                                      placeholder="Redija o conteúdo confirmado nos registos escolares"></textarea>
+                                                      placeholder="Nota para a escola ou motivo de rejeição"></textarea>
                                             <button class="btn btn-sm btn-outline-primary" type="submit">
-                                                Actualizar / emitir PDF
+                                                <?= $request['estado'] === 'aprovado'
+                                                    ? 'Emitir documento PDF'
+                                                    : 'Registar decisão' ?>
                                             </button>
                                         </form>
                                     <?php else: ?>
@@ -163,8 +163,8 @@ $typeLabels = [
             </div>
         </div>
         <p class="form-text mt-2">
-            A opção «Emitido» valida o texto, gera o PDF e o código público de validação.
-            A escola poderá imprimir o recibo com o protocolo e o código para o aluno.
+            A aprovação envia uma nota à escola e libera a emissão. O documento é gerado
+            com o modelo oficial, guardado no pedido e recebe um código público de validação.
         </p>
     <?php endif; ?>
 </section>

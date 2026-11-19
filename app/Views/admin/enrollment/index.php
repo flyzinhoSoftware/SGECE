@@ -95,7 +95,8 @@ $paginationQuery = http_build_query(array_filter([
                         <?php endif; ?>
                         <?php if ($activeYears === []): ?>
                             <div class="alert alert-warning" role="alert">
-                                Não existe um ano lectivo activo para registar matrículas.
+                                Não existe um ano lectivo activo. A abertura automática ocorre
+                                a partir de 14 de Fevereiro, depois da conclusão do ano anterior.
                             </div>
                         <?php endif; ?>
                         <?php if ($classes === []): ?>

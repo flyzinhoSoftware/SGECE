@@ -27,7 +27,7 @@ $error = $error ?? null;
 <body>
 <main>
     <h1>Validação de documento escolar</h1>
-    <p>Confirme a autenticidade de um certificado ou declaração emitido pelo SGECE.</p>
+    <p>Confirme a autenticidade de um certificado, declaração anual ou declaração de notas do SGECE.</p>
 
     <form method="get" action="<?= $escape($basePath) ?>/validar-documento">
         <div class="field">
@@ -41,7 +41,13 @@ $error = $error ?? null;
     <?php if ($error !== null): ?>
         <div class="alert danger" role="alert"><?= $escape($error) ?></div>
     <?php elseif (is_array($document)): ?>
-        <?php $label = $document['tipo_documento'] === 'certificado' ? 'Certificado escolar' : 'Declaração escolar'; ?>
+        <?php
+        $label = match ($document['tipo_documento']) {
+            'certificado' => 'Certificado escolar',
+            'declaracao_notas' => 'Declaração de notas',
+            default => 'Declaração escolar'
+        };
+        ?>
         <div class="alert success" role="status"><strong>Documento autêntico</strong></div>
         <div class="details">
             <div><strong>Tipo:</strong> <?= $escape($label) ?></div>

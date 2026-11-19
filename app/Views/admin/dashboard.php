@@ -104,6 +104,25 @@ $nomeApresentacao = htmlspecialchars(
             </div>
         </article>
 
+        <article class="stat-card">
+            <div class="stat-top">
+                <div class="stat-icon stat-green">
+                    <i class="bi bi-file-earmark-check"></i>
+                </div>
+
+                <span class="stat-tag">Documentos</span>
+            </div>
+
+            <h2><?= number_format((int) ($approvedDocumentCount ?? 0), 0, ',', '.') ?></h2>
+            <p>Aprovados para emissão</p>
+
+            <div class="stat-footer">
+                <a href="<?= htmlspecialchars($approvedDocumentsUrl, ENT_QUOTES, 'UTF-8') ?>">
+                    Rever e emitir
+                </a>
+            </div>
+        </article>
+
     </section>
 
 
@@ -246,8 +265,8 @@ $nomeApresentacao = htmlspecialchars(
                 <i class="bi bi-lightbulb"></i>
 
                 <p>
-                    Os indicadores serão actualizados automaticamente
-                    após a integração dos módulos com a base de dados.
+                    Os documentos aprovados aparecem aqui para emissão.
+                    Os restantes indicadores serão integrados com os respectivos módulos.
                 </p>
             </div>
 

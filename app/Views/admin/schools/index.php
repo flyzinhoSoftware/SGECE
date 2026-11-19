@@ -116,6 +116,7 @@ $paginationQuery = http_build_query(array_filter([
                 <?php
                 $fields = [
                     'nome' => ['Nome da escola *', 180, true],
+                    'nome_director' => ['Nome do director *', 180, true],
                     'localidade' => ['Localidade', 120, false],
                     'endereco' => ['Endereço *', 255, true],
                     'telefone' => ['Telefone *', 30, true]
@@ -286,6 +287,7 @@ $paginationQuery = http_build_query(array_filter([
                 <thead>
                     <tr>
                         <th scope="col">Escola</th>
+                        <th scope="col">Director</th>
                         <th scope="col">Código</th>
                         <th scope="col">Localização</th>
                         <th scope="col">Contacto</th>
@@ -296,7 +298,7 @@ $paginationQuery = http_build_query(array_filter([
                 <tbody>
                     <?php if ($schools === []): ?>
                         <tr>
-                            <td colspan="6" class="schools-empty">
+                            <td colspan="7" class="schools-empty">
                                 <i class="bi bi-building" aria-hidden="true"></i>
                                 <strong>Nenhuma escola encontrada</strong>
                                 <span>Ajuste os filtros ou registe uma nova escola.</span>
@@ -309,6 +311,7 @@ $paginationQuery = http_build_query(array_filter([
                                     <strong><?= $escape($school['nome']) ?></strong>
                                     <small><?= $escape($schoolLevels[$school['tipo']] ?? $school['tipo']) ?></small>
                                 </td>
+                                <td><?= $escape($school['nome_director'] ?: '—') ?></td>
                                 <td><span class="school-code"><?= $escape($school['codigo']) ?></span></td>
                                 <td>
                                     <strong><?= $escape($school['provincia']) ?></strong>

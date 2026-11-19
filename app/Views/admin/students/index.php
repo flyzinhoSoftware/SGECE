@@ -137,6 +137,23 @@ $paginationQuery = http_build_query(array_filter([
                             </div>
 
                             <div class="schools-field">
+                                <label for="student-naturalidade" class="form-label">
+                                    Naturalidade (localidade e província) *
+                                </label>
+                                <input
+                                    id="student-naturalidade"
+                                    class="form-control<?= isset($errors['naturalidade']) ? ' is-invalid' : '' ?>"
+                                    type="text"
+                                    name="naturalidade"
+                                    value="<?= $escape($formValues['naturalidade'] ?? '') ?>"
+                                    maxlength="180"
+                                    required>
+                                <?php if (isset($errors['naturalidade'])): ?>
+                                    <div class="invalid-feedback"><?= $escape($errors['naturalidade']) ?></div>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="schools-field">
                                 <label for="student-sex" class="form-label">Sexo *</label>
                                 <select
                                     id="student-sex"

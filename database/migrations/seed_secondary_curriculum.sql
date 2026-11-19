@@ -1,9 +1,10 @@
 START TRANSACTION;
 
 INSERT INTO classes
-    (nivel_ensino_id, codigo, nome, ordem, estado)
+    (nivel_ensino_id, codigo, nome, ordem, tem_exame, estado)
 SELECT
-    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem, 'activa'
+    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem,
+    IF(curriculum.codigo IN ('SEC-09', 'SEC-10', 'SEC-12'), 1, 0), 'activa'
 FROM niveis_ensino ne
 CROSS JOIN (
     SELECT 'SEC-07' AS codigo, '7.ª Classe' AS nome, 7 AS ordem
@@ -16,7 +17,8 @@ CROSS JOIN (
 WHERE ne.codigo = 'SEC'
 ON DUPLICATE KEY UPDATE
     nome = VALUES(nome),
-    ordem = VALUES(ordem);
+    ordem = VALUES(ordem),
+    tem_exame = VALUES(tem_exame);
 
 INSERT INTO disciplinas
     (nivel_ensino_id, codigo, nome, estado)

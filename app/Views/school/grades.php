@@ -31,7 +31,8 @@ $gradeValue = static function ($value): string {
 
     <?php if ($year === null): ?>
         <div class="alert alert-warning" role="status">
-            Não existe um ano lectivo activo. Contacte o administrador.
+            Não existe um ano lectivo activo. O sistema abre o ano automaticamente a partir
+            de 14 de Fevereiro, depois da conclusão do ano anterior.
         </div>
     <?php else: ?>
         <form method="get" action="<?= $escape($basePath) ?>/escola/notas/lancar"

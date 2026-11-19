@@ -2,12 +2,16 @@
 
 use Dotenv\Dotenv;
 use App\Core\Router;
+use App\Services\AcademicYearSchedule;
+use Config\Database;
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
 try {
     $dotenv = Dotenv::createImmutable(dirname(__DIR__));
     $dotenv->load();
+
+    AcademicYearSchedule::activateIfDue(Database::connect());
 
     // Inicializar o sistema de rotas
     $router = new Router();

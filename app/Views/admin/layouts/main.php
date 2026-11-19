@@ -120,6 +120,18 @@ $iniciais = strtoupper(
 
             <div class="sidebar-section-label">GESTÃO ESCOLAR</div>
 
+            <a href="<?= $escape($basePath) ?>/escola/alunos"
+               class="sidebar-link <?= $activeMenu === 'school-students' ? 'active' : '' ?>">
+                <i class="bi bi-people"></i>
+                <span>Alunos</span>
+            </a>
+
+            <a href="<?= $escape($basePath) ?>/escola/matriculas"
+               class="sidebar-link <?= $activeMenu === 'school-enrollment' ? 'active' : '' ?>">
+                <i class="bi bi-calendar3"></i>
+                <span>Matrículas</span>
+            </a>
+
             <a href="<?= $escape($basePath) ?>/escola/notas"
                class="sidebar-link <?= $activeMenu === 'school-grades' ? 'active' : '' ?>">
                 <i class="bi bi-journal-check"></i>

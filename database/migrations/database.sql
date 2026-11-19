@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS escolas (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     codigo VARCHAR(120) NOT NULL UNIQUE,
     nome VARCHAR(180) NOT NULL,
+    nome_director VARCHAR(180) NULL,
     tipo VARCHAR(30) NOT NULL,
     provincia VARCHAR(100) NOT NULL,
     distrito VARCHAR(100) NOT NULL,
@@ -215,6 +216,7 @@ CREATE TABLE IF NOT EXISTS alunos (
     codigo_central VARCHAR(40) NOT NULL UNIQUE,
     nome_completo VARCHAR(180) NOT NULL,
     data_nascimento DATE NOT NULL,
+    naturalidade VARCHAR(180) NULL,
     sexo VARCHAR(20) NOT NULL,
 
     -- BI cifrado pela aplicacao
@@ -478,9 +480,10 @@ WHERE c.codigo = 'TESTE-8A'
 LIMIT 1;
 
 INSERT IGNORE INTO classes
-    (nivel_ensino_id, codigo, nome, ordem, estado)
+    (nivel_ensino_id, codigo, nome, ordem, tem_exame, estado)
 SELECT
-    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem, 'activa'
+    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem,
+    IF(curriculum.codigo = 'PRI-06', 1, 0), 'activa'
 FROM niveis_ensino ne
 CROSS JOIN (
     SELECT 'PRI-01' AS codigo, '1.ª Classe' AS nome, 1 AS ordem
@@ -493,7 +496,8 @@ CROSS JOIN (
 WHERE ne.codigo = 'PRI'
 ON DUPLICATE KEY UPDATE
     nome = VALUES(nome),
-    ordem = VALUES(ordem);
+    ordem = VALUES(ordem),
+    tem_exame = VALUES(tem_exame);
 
 INSERT INTO disciplinas
     (nivel_ensino_id, codigo, nome, estado)
@@ -533,9 +537,10 @@ WHERE ne.codigo = 'PRI'
   );
 
 INSERT INTO classes
-    (nivel_ensino_id, codigo, nome, ordem, estado)
+    (nivel_ensino_id, codigo, nome, ordem, tem_exame, estado)
 SELECT
-    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem, 'activa'
+    ne.id, curriculum.codigo, curriculum.nome, curriculum.ordem,
+    IF(curriculum.codigo IN ('SEC-09', 'SEC-10', 'SEC-12'), 1, 0), 'activa'
 FROM niveis_ensino ne
 CROSS JOIN (
     SELECT 'SEC-07' AS codigo, '7.ª Classe' AS nome, 7 AS ordem
@@ -548,7 +553,8 @@ CROSS JOIN (
 WHERE ne.codigo = 'SEC'
 ON DUPLICATE KEY UPDATE
     nome = VALUES(nome),
-    ordem = VALUES(ordem);
+    ordem = VALUES(ordem),
+    tem_exame = VALUES(tem_exame);
 
 INSERT INTO disciplinas
     (nivel_ensino_id, codigo, nome, estado)
@@ -611,15 +617,21 @@ WHERE ne.codigo = 'SEC'
   );
 
 INSERT IGNORE INTO alunos
-    (codigo_central, nome_completo, data_nascimento, sexo,
+    (codigo_central, nome_completo, data_nascimento, naturalidade, sexo,
      bi_cifrado, bi_hash, nome_pai, nome_mae, contacto, endereco, estado)
 VALUES
     ('SGECE-ALUNO-TESTE-001', 'Aluno de Teste SGECE', '2012-05-10',
+     'Maputo, Província de Maputo',
      'Feminino',
      UNHEX('7385e09d6a814e121e3acd35de6c2fa7fa44ecdf3687e6cfc19d1f689ec3a64185898fc8ce532e166f9a8b3f6e8aa086'),
      '323768fb6725179f3311f8c1af7e9dec1f6582649c374ad67e2d020d2a627f59',
      'Pai de Teste', 'Mae de Teste', '840000001',
      'Endereco ficticio para testes', 'activo');
+
+UPDATE alunos
+SET naturalidade = 'Maputo, Província de Maputo'
+WHERE codigo_central = 'SGECE-ALUNO-TESTE-001'
+  AND naturalidade IS NULL;
 
 INSERT IGNORE INTO aluno_escolas
     (aluno_id, escola_id, codigo_aluno_escola, data_entrada, estado)

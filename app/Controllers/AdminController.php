@@ -4,14 +4,18 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Session;
-use App\Services\SchoolPdfGenerator;
+use App\Services\AcademicYearCompletion;
+use App\Services\DocumentRequestIssuer;
+use App\Services\EnrollmentPlacement;
+use App\Services\StudentIdentity;
 use Config\Database;
 
 class AdminController extends Controller
 {
     private const SCHOOL_PROVINCE = 'Zambézia';
     private const SCHOOL_EMAIL_DOMAIN = 'sgece.gov.mz';
-    private const MAX_STUDENTS_PER_TURMA = 50;
+    private const MAX_STUDENTS_PER_TURMA =
+        EnrollmentPlacement::MAX_STUDENTS_PER_CLASSROOM;
 
     private const SCHOOL_LEVELS = [
         'Primaria' => 'Ensino Primário',
@@ -147,12 +151,17 @@ class AdminController extends Controller
     public function index(): void
     {
         $user = $this->requireAdministrator();
-        $totalSchools = (int) Database::connect()
+        $database = Database::connect();
+        $totalSchools = (int) $database
             ->query('SELECT COUNT(*) FROM escolas')
+            ->fetchColumn();
+        $approvedDocumentCount = (int) $database
+            ->query("SELECT COUNT(*) FROM pedidos_documentos WHERE estado = 'aprovado'")
             ->fetchColumn();
 
         $baseAdminPath = $this->basePath() . '/admin';
         $schoolsUrl = $baseAdminPath . '/escolas';
+        $approvedDocumentsUrl = $baseAdminPath . '/pedidos-documentos?estado=aprovado';
         $moduleUrls = [
             'students' => $baseAdminPath . '/alunos',
             'academic' => $baseAdminPath . '/gestao-academica',
@@ -748,11 +757,11 @@ class AdminController extends Controller
         try {
             if ($id > 0) {
                 $existing = $database->prepare(
-                    'SELECT ano FROM anos_lectivos WHERE id = :id FOR UPDATE'
+                    'SELECT ano, estado FROM anos_lectivos WHERE id = :id FOR UPDATE'
                 );
                 $existing->execute(['id' => $id]);
-                $currentYear = $existing->fetchColumn();
-                if ($currentYear === false) {
+                $currentYear = $existing->fetch(\PDO::FETCH_ASSOC);
+                if (!$currentYear) {
                     $database->rollBack();
                     $_SESSION['_academic_flash'] = [
                         'type' => 'danger',
@@ -761,7 +770,20 @@ class AdminController extends Controller
                     $this->redirect('/admin/gestao-academica#anos');
                 }
 
-                if ((int) $currentYear !== (int) $year) {
+                if (
+                    $status === 'encerrado'
+                    && $currentYear['estado'] === 'activo'
+                    && !AcademicYearCompletion::hasCompleteThirdQuarter($database, $id)
+                ) {
+                    $database->rollBack();
+                    $_SESSION['_academic_flash'] = [
+                        'type' => 'danger',
+                        'message' => 'O ano lectivo só pode ser encerrado depois de serem lançadas todas as notas do 3.º trimestre.'
+                    ];
+                    $this->redirect('/admin/gestao-academica#anos');
+                }
+
+                if ((int) $currentYear['ano'] !== (int) $year) {
                     $references = $database->prepare(
                         'SELECT COUNT(*) FROM turmas WHERE ano_lectivo_id = :id'
                     );
@@ -778,6 +800,28 @@ class AdminController extends Controller
             }
 
             if ($status === 'activo') {
+                $activeYears = $database->prepare(
+                    "SELECT id
+                     FROM anos_lectivos
+                     WHERE estado = 'activo' AND id <> :id
+                     FOR UPDATE"
+                );
+                $activeYears->execute(['id' => $id]);
+                foreach ($activeYears->fetchAll(\PDO::FETCH_COLUMN) as $activeYearId) {
+                    if (
+                        !AcademicYearCompletion::hasCompleteThirdQuarter(
+                            $database,
+                            (int) $activeYearId
+                        )
+                    ) {
+                        $database->rollBack();
+                        $_SESSION['_academic_flash'] = [
+                            'type' => 'danger',
+                            'message' => 'Não é possível activar outro ano lectivo antes de serem lançadas todas as notas do 3.º trimestre do ano activo.'
+                        ];
+                        $this->redirect('/admin/gestao-academica#anos');
+                    }
+                }
                 $closeOtherYears = $database->prepare(
                     "UPDATE anos_lectivos
                      SET estado = 'encerrado'
@@ -1189,41 +1233,49 @@ class AdminController extends Controller
         ]);
         $newStatus = $this->postedString('estado') ?? '';
         $response = $this->postedString('resposta_admin') ?? '';
-        $documentContent = $this->postedString('conteudo_documento') ?? '';
         $responseLength = preg_match_all('/./us', $response);
-        $documentContentLength = preg_match_all('/./us', $documentContent);
         if (
             $requestId === false
-            || !in_array($newStatus, ['em_analise', 'emitido', 'rejeitado'], true)
+            || !in_array($newStatus, ['em_analise', 'aprovado', 'emitido', 'rejeitado'], true)
             || $responseLength === false
             || $responseLength > 500
+            || ($newStatus === 'aprovado' && $responseLength < 5)
             || ($newStatus === 'rejeitado' && $responseLength < 5)
-            || $documentContentLength === false
-            || (
-                $newStatus === 'emitido'
-                && ($documentContentLength < 10 || $documentContentLength > 3000)
-            )
         ) {
             $_SESSION['_document_requests_flash'] = [
                 'type' => 'danger',
-                'message' => 'Para rejeitar, indique o motivo; para emitir, preencha o texto validado do documento.'
+                'message' => 'Para aprovar, indique a nota de emissão para a escola; para rejeitar, indique o motivo.'
             ];
             $this->redirect('/admin/pedidos-documentos');
         }
 
         $database = Database::connect();
+        if ($newStatus === 'emitido') {
+            try {
+                (new DocumentRequestIssuer())->issue(
+                    $database,
+                    (int) $requestId
+                );
+            } catch (\DomainException $exception) {
+                $_SESSION['_document_requests_flash'] = [
+                    'type' => 'warning',
+                    'message' => $exception->getMessage()
+                ];
+                $this->redirect('/admin/pedidos-documentos');
+            }
+
+            $_SESSION['_document_requests_flash'] = [
+                'type' => 'success',
+                'message' => 'Documento emitido e disponibilizado à escola.'
+            ];
+            $this->redirect('/admin/pedidos-documentos');
+        }
+
         $database->beginTransaction();
         try {
             $currentRequest = $database->prepare(
-                'SELECT pd.estado, pd.codigo, pd.tipo_documento,
-                        a.nome_completo AS aluno_nome, a.codigo_central,
-                        e.nome AS escola_nome, e.distrito AS escola_distrito,
-                        e.provincia AS escola_provincia
-                 FROM pedidos_documentos pd
-                 INNER JOIN aluno_escolas ae ON ae.id = pd.aluno_escola_id
-                 INNER JOIN alunos a ON a.id = ae.aluno_id
-                 INNER JOIN escolas e ON e.id = pd.escola_id
-                 WHERE pd.id = :id
+                'SELECT estado FROM pedidos_documentos
+                 WHERE id = :id
                  FOR UPDATE'
             );
             $currentRequest->execute(['id' => $requestId]);
@@ -1231,7 +1283,8 @@ class AdminController extends Controller
             $currentStatus = $request['estado'] ?? false;
             $allowedTransitions = [
                 'pendente' => ['em_analise', 'rejeitado'],
-                'em_analise' => ['emitido', 'rejeitado']
+                'em_analise' => ['aprovado', 'rejeitado'],
+                'aprovado' => ['rejeitado']
             ];
             if (
                 $currentStatus === false
@@ -1245,61 +1298,21 @@ class AdminController extends Controller
                 $this->redirect('/admin/pedidos-documentos');
             }
 
-            $terminal = in_array($newStatus, ['emitido', 'rejeitado'], true);
-            if ($newStatus === 'emitido') {
-                $validationCode = strtoupper(bin2hex(random_bytes(16)));
-                $issuedAt = date('Y-m-d H:i:s');
-                $pdf = (new SchoolPdfGenerator())->issuedDocument([
-                    'tipo_documento' => $request['tipo_documento'],
-                    'codigo' => $request['codigo'],
-                    'codigo_validacao' => $validationCode,
-                    'aluno_nome' => $request['aluno_nome'],
-                    'codigo_central' => $request['codigo_central'],
-                    'escola_nome' => $request['escola_nome'],
-                    'escola_distrito' => $request['escola_distrito'],
-                    'escola_provincia' => $request['escola_provincia'],
-                    'conteudo_documento' => $documentContent,
-                    'emitido_em' => date('d/m/Y')
-                ]);
-                $update = $database->prepare(
-                    'UPDATE pedidos_documentos
-                     SET estado = :estado,
-                         analisado_por = :analisado_por,
-                         resposta_admin = COALESCE(:resposta_admin, resposta_admin),
-                         conteudo_documento = :conteudo_documento,
-                         codigo_validacao = :codigo_validacao,
-                         documento_pdf = :documento_pdf,
-                         emitido_em = :emitido_em,
-                         concluido_em = :concluido_em
-                     WHERE id = :id'
-                );
-                $update->execute([
-                    'estado' => $newStatus,
-                    'analisado_por' => (int) $user['id'],
-                    'resposta_admin' => $response === '' ? null : $response,
-                    'conteudo_documento' => $documentContent,
-                    'codigo_validacao' => $validationCode,
-                    'documento_pdf' => $pdf,
-                    'emitido_em' => $issuedAt,
-                    'concluido_em' => $issuedAt,
-                    'id' => $requestId
-                ]);
-            } else {
-                $update = $database->prepare(
-                    'UPDATE pedidos_documentos
-                     SET estado = :estado,
-                         analisado_por = :analisado_por,
-                         resposta_admin = COALESCE(:resposta_admin, resposta_admin),
-                         concluido_em = ' . ($terminal ? 'CURRENT_TIMESTAMP' : 'NULL') . '
-                     WHERE id = :id'
-                );
-                $update->execute([
-                    'estado' => $newStatus,
-                    'analisado_por' => (int) $user['id'],
-                    'resposta_admin' => $response === '' ? null : $response,
-                    'id' => $requestId
-                ]);
-            }
+            $terminal = $newStatus === 'rejeitado';
+            $update = $database->prepare(
+                'UPDATE pedidos_documentos
+                 SET estado = :estado,
+                     analisado_por = :analisado_por,
+                     resposta_admin = COALESCE(:resposta_admin, resposta_admin),
+                     concluido_em = ' . ($terminal ? 'CURRENT_TIMESTAMP' : 'NULL') . '
+                 WHERE id = :id'
+            );
+            $update->execute([
+                'estado' => $newStatus,
+                'analisado_por' => (int) $user['id'],
+                'resposta_admin' => $response === '' ? null : $response,
+                'id' => $requestId
+            ]);
             $database->commit();
         } catch (\Throwable $exception) {
             if ($database->inTransaction()) {
@@ -1310,7 +1323,9 @@ class AdminController extends Controller
 
         $_SESSION['_document_requests_flash'] = [
             'type' => 'success',
-            'message' => 'O estado do pedido foi actualizado.'
+            'message' => $newStatus === 'aprovado'
+                ? 'Pedido aprovado. A nota de emissão foi disponibilizada à escola no painel.'
+                : 'O estado do pedido foi actualizado.'
         ];
         $this->redirect('/admin/pedidos-documentos');
     }
@@ -1370,6 +1385,7 @@ class AdminController extends Controller
         $limits = [
             'codigo' => 120,
             'nome' => 180,
+            'nome_director' => 180,
             'tipo' => 30,
             'provincia' => 100,
             'distrito' => 100,
@@ -1421,7 +1437,15 @@ class AdminController extends Controller
         }
 
         foreach (
-            ['nome', 'tipo', 'provincia', 'distrito', 'endereco', 'telefone']
+            [
+                'nome',
+                'nome_director',
+                'tipo',
+                'provincia',
+                'distrito',
+                'endereco',
+                'telefone'
+            ]
             as $required
         ) {
             if ($values[$required] === '') {
@@ -1522,6 +1546,9 @@ class AdminController extends Controller
 
         $parameters = [
             'nome' => $values['nome'],
+            'nome_director' => $values['nome_director'] === ''
+                ? null
+                : $values['nome_director'],
             'tipo' => $values['tipo'],
             'provincia' => $values['provincia'],
             'distrito' => $values['distrito'],
@@ -1536,6 +1563,7 @@ class AdminController extends Controller
             $statement = $database->prepare(
                 'UPDATE escolas
                  SET nome = :nome,
+                     nome_director = :nome_director,
                      tipo = :tipo,
                      provincia = :provincia,
                      distrito = :distrito,
@@ -1582,10 +1610,10 @@ class AdminController extends Controller
                     $insertParameters['email'] = $attemptEmail;
                     $insert = $database->prepare(
                         "INSERT INTO escolas
-                            (codigo, nome, tipo, provincia, distrito, localidade,
+                            (codigo, nome, nome_director, tipo, provincia, distrito, localidade,
                              endereco, telefone, email, estado)
                          VALUES
-                            (:codigo, :nome, :tipo, :provincia, :distrito, :localidade,
+                            (:codigo, :nome, :nome_director, :tipo, :provincia, :distrito, :localidade,
                              :endereco, :telefone, :email, 'activa')"
                     );
                     $insert->execute($insertParameters);
@@ -1667,6 +1695,7 @@ class AdminController extends Controller
         $limits = [
             'nome_completo' => 180,
             'data_nascimento' => 10,
+            'naturalidade' => 180,
             'sexo' => 20,
             'bi' => 30,
             'distrito' => 100,
@@ -1682,6 +1711,7 @@ class AdminController extends Controller
             'codigo_central' => '',
             'nome_completo' => '',
             'data_nascimento' => '',
+            'naturalidade' => '',
             'sexo' => '',
             'bi' => '',
             'distrito' => '',
@@ -1727,7 +1757,14 @@ class AdminController extends Controller
         }
 
         foreach (
-            ['nome_completo', 'data_nascimento', 'sexo', 'distrito', 'escola_id']
+            [
+                'nome_completo',
+                'data_nascimento',
+                'naturalidade',
+                'sexo',
+                'distrito',
+                'escola_id'
+            ]
             as $required
         ) {
             if ($values[$required] === '') {
@@ -1836,6 +1873,7 @@ class AdminController extends Controller
         $parameters = [
             'nome_completo' => $values['nome_completo'],
             'data_nascimento' => $values['data_nascimento'],
+            'naturalidade' => $values['naturalidade'],
             'sexo' => $values['sexo'],
             'nome_pai' => $values['nome_pai'] === '' ? null : $values['nome_pai'],
             'nome_mae' => $values['nome_mae'] === '' ? null : $values['nome_mae'],
@@ -1853,6 +1891,7 @@ class AdminController extends Controller
             $updateFields = [
                 'nome_completo = :nome_completo',
                 'data_nascimento = :data_nascimento',
+                'naturalidade = :naturalidade',
                 'sexo = :sexo',
                 'nome_pai = :nome_pai',
                 'nome_mae = :nome_mae',
@@ -1958,11 +1997,13 @@ class AdminController extends Controller
 
                     $insert = $database->prepare(
                         'INSERT INTO alunos
-                            (codigo_central, nome_completo, data_nascimento, sexo,
+                            (codigo_central, nome_completo, data_nascimento,
+                             naturalidade, sexo,
                              bi_cifrado, bi_hash, nome_pai, nome_mae, contacto,
                              endereco, estado)
                          VALUES
-                            (:codigo_central, :nome_completo, :data_nascimento, :sexo,
+                            (:codigo_central, :nome_completo, :data_nascimento,
+                             :naturalidade, :sexo,
                              :bi_cifrado, :bi_hash, :nome_pai, :nome_mae, :contacto,
                              :endereco, \'activo\')'
                     );
@@ -2495,14 +2536,21 @@ class AdminController extends Controller
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         }
 
-        $allowedTypes = ['certificado', 'declaracao'];
-        $allowedStatuses = ['pendente', 'em_analise', 'emitido', 'rejeitado'];
+        $allowedTypes = [
+            'certificado',
+            'declaracao',
+            'declaracao_notas',
+            'declaracoes'
+        ];
+        $allowedStatuses = ['pendente', 'em_analise', 'aprovado', 'emitido', 'rejeitado'];
         $requestedType = $_GET['tipo'] ?? '';
-        $type = $fixedType ?? (
+        $type = $fixedType === 'declaracao'
+            ? 'declaracoes'
+            : ($fixedType ?? (
             is_string($requestedType) && in_array($requestedType, $allowedTypes, true)
                 ? $requestedType
                 : ''
-        );
+            ));
         $requestedStatus = $_GET['estado'] ?? '';
         $status = is_string($requestedStatus)
             && in_array($requestedStatus, $allowedStatuses, true)
@@ -2512,8 +2560,12 @@ class AdminController extends Controller
         $conditions = [];
         $parameters = [];
         if ($type !== '') {
-            $conditions[] = 'pd.tipo_documento = :tipo_documento';
-            $parameters['tipo_documento'] = $type;
+            if ($type === 'declaracoes') {
+                $conditions[] = "pd.tipo_documento IN ('declaracao', 'declaracao_notas')";
+            } else {
+                $conditions[] = 'pd.tipo_documento = :tipo_documento';
+                $parameters['tipo_documento'] = $type;
+            }
         }
         if ($status !== '') {
             $conditions[] = 'pd.estado = :estado';
@@ -2535,7 +2587,9 @@ class AdminController extends Controller
             " ORDER BY CASE pd.estado
                     WHEN 'pendente' THEN 0
                     WHEN 'em_analise' THEN 1
-                    ELSE 2
+                    WHEN 'aprovado' THEN 2
+                    WHEN 'emitido' THEN 3
+                    ELSE 4
                 END, pd.solicitado_em DESC, pd.id DESC"
         );
         $statement->execute($parameters);
@@ -2544,10 +2598,16 @@ class AdminController extends Controller
         unset($_SESSION['_document_requests_flash']);
         $pageTitle = $type === 'certificado'
             ? 'Pedidos de certificados'
-            : ($type === 'declaracao' ? 'Pedidos de declarações' : 'Pedidos de documentos');
+            : (in_array($type, ['declaracao', 'declaracoes'], true)
+                ? 'Pedidos de declarações'
+                : ($type === 'declaracao_notas'
+                    ? 'Pedidos de declarações de notas'
+                    : 'Pedidos de documentos'));
         $activeMenu = $type === 'certificado'
             ? 'certificates'
-            : ($type === 'declaracao' ? 'declarations' : 'document-requests');
+            : (in_array($type, ['declaracao', 'declaracao_notas', 'declaracoes'], true)
+                ? 'declarations'
+                : 'document-requests');
 
         ob_start();
         $this->view('admin/document-requests', [
@@ -2561,6 +2621,7 @@ class AdminController extends Controller
             'statusLabels' => [
                 'pendente' => 'Pendente',
                 'em_analise' => 'Em análise',
+                'aprovado' => 'Aprovado para emissão',
                 'emitido' => 'Emitido',
                 'rejeitado' => 'Rejeitado'
             ]
@@ -2791,59 +2852,17 @@ class AdminController extends Controller
 
     private function generateStudentCode(): string
     {
-        return 'SGECE-ALU-' . strtoupper(bin2hex(random_bytes(12)));
+        return StudentIdentity::generateCode();
     }
 
     private function studentIdentityHash(string $identityNumber): string
     {
-        $normalized = preg_replace('/\s+/u', '', trim($identityNumber));
-        if ($normalized === null || $normalized === '') {
-            throw new \InvalidArgumentException('O BI do aluno é inválido.');
-        }
-
-        return hash_hmac(
-            'sha256',
-            strtoupper($normalized),
-            $this->studentIdentityKey('hash')
-        );
+        return StudentIdentity::hash($identityNumber);
     }
 
     private function encryptStudentIdentity(string $identityNumber): string
     {
-        $nonce = random_bytes(12);
-        $tag = '';
-        $encrypted = openssl_encrypt(
-            trim($identityNumber),
-            'aes-256-gcm',
-            $this->studentIdentityKey('encryption'),
-            OPENSSL_RAW_DATA,
-            $nonce,
-            $tag,
-            '',
-            16
-        );
-        if ($encrypted === false) {
-            throw new \RuntimeException('Não foi possível cifrar o BI do aluno.');
-        }
-
-        return $nonce . $tag . $encrypted;
-    }
-
-    private function studentIdentityKey(string $purpose): string
-    {
-        $applicationKey = $_ENV['APP_KEY'] ?? null;
-        if (!is_string($applicationKey) || strlen($applicationKey) < 32) {
-            throw new \RuntimeException(
-                'Configure uma APP_KEY segura para gerir os dados de identificação dos alunos.'
-            );
-        }
-
-        return hash_hmac(
-            'sha256',
-            'sgece:students:bi:' . $purpose . ':v1',
-            $applicationKey,
-            true
-        );
+        return StudentIdentity::encrypt($identityNumber);
     }
 
     private function studentIdentityExists(
@@ -2851,17 +2870,7 @@ class AdminController extends Controller
         string $identityHash,
         int $excludeId
     ): bool {
-        $sql = 'SELECT id FROM alunos WHERE bi_hash = :hash';
-        $parameters = ['hash' => $identityHash];
-        if ($excludeId > 0) {
-            $sql .= ' AND id <> :id';
-            $parameters['id'] = $excludeId;
-        }
-
-        $statement = $database->prepare($sql . ' LIMIT 1');
-        $statement->execute($parameters);
-
-        return $statement->fetchColumn() !== false;
+        return StudentIdentity::exists($database, $identityHash, $excludeId);
     }
 
     private function findOrCreateEnrollmentClassroom(
@@ -2870,113 +2879,12 @@ class AdminController extends Controller
         int $classId,
         int $academicYearId
     ): array {
-        $statement = $database->prepare(
-            "SELECT t.id, t.identificacao, t.capacidade, t.estado,
-                    COUNT(m.id) AS matriculas_activas
-             FROM turmas t
-             LEFT JOIN matriculas m
-                ON m.turma_id = t.id
-               AND m.estado = 'activa'
-             WHERE t.escola_id = :escola_id
-               AND t.classe_id = :classe_id
-               AND t.ano_lectivo_id = :ano_lectivo_id
-             GROUP BY t.id, t.identificacao, t.capacidade, t.estado
-             ORDER BY CHAR_LENGTH(t.identificacao), t.identificacao"
+        return EnrollmentPlacement::findOrCreateClassroom(
+            $database,
+            $schoolId,
+            $classId,
+            $academicYearId
         );
-        $statement->execute([
-            'escola_id' => $schoolId,
-            'classe_id' => $classId,
-            'ano_lectivo_id' => $academicYearId
-        ]);
-
-        $sections = [];
-        foreach ($statement->fetchAll() as $section) {
-            $identifier = (string) $section['identificacao'];
-            if (preg_match('/^[A-Z]+$/i', $identifier) !== 1) {
-                continue;
-            }
-
-            $label = strtoupper($identifier);
-            $sections[$label] = [
-                'id' => (int) $section['id'],
-                'identificacao' => $identifier,
-                'capacidade' => $section['capacidade'],
-                'estado' => $section['estado'],
-                'matriculas_activas' => (int) $section['matriculas_activas'],
-                'label_is_canonical' => $identifier === $label
-            ];
-        }
-
-        for ($number = 1; ; $number++) {
-            $label = $this->alphabeticClassroomLabel($number);
-            if (!isset($sections[$label])) {
-                $create = $database->prepare(
-                    "INSERT INTO turmas
-                        (escola_id, classe_id, ano_lectivo_id,
-                         identificacao, capacidade, estado)
-                     VALUES
-                        (:escola_id, :classe_id, :ano_lectivo_id,
-                         :identificacao, :capacidade, 'activa')"
-                );
-                $create->execute([
-                    'escola_id' => $schoolId,
-                    'classe_id' => $classId,
-                    'ano_lectivo_id' => $academicYearId,
-                    'identificacao' => $label,
-                    'capacidade' => self::MAX_STUDENTS_PER_TURMA
-                ]);
-                $classroomId = (int) $database->lastInsertId();
-                if ($classroomId < 1) {
-                    throw new \RuntimeException(
-                        'Não foi possível obter o identificador da turma criada.'
-                    );
-                }
-
-                return [
-                    'id' => $classroomId,
-                    'identificacao' => $label
-                ];
-            }
-
-            $section = $sections[$label];
-            if ($section['estado'] !== 'activa' || !$section['label_is_canonical']) {
-                continue;
-            }
-            $configuredCapacity = $section['capacidade'] === null
-                ? self::MAX_STUDENTS_PER_TURMA
-                : (int) $section['capacidade'];
-            $capacityLimit = min(
-                self::MAX_STUDENTS_PER_TURMA,
-                $configuredCapacity
-            );
-            if ($section['matriculas_activas'] < $capacityLimit) {
-                return [
-                    'id' => $section['id'],
-                    'identificacao' => $section['identificacao']
-                ];
-            }
-        }
-    }
-
-    private function alphabeticClassroomLabel(int $number): string
-    {
-        if ($number < 1) {
-            throw new \InvalidArgumentException('A sequência da turma deve ser positiva.');
-        }
-
-        $label = '';
-        while ($number > 0) {
-            $number--;
-            $label = chr(65 + ($number % 26)) . $label;
-            $number = intdiv($number, 26);
-        }
-        if (strlen($label) > 50) {
-            throw new \RuntimeException(
-                'A sequência de turmas excedeu o tamanho permitido.'
-            );
-        }
-
-        return $label;
     }
 
     private function nextEnrollmentProcessNumber(
@@ -2984,61 +2892,11 @@ class AdminController extends Controller
         int $schoolId,
         int $academicYearId
     ): int {
-        $ensureSequence = $database->prepare(
-            'INSERT INTO sequencias_processos
-                (escola_id, ano_lectivo_id, ultimo_numero)
-             VALUES
-                (:escola_id, :ano_lectivo_id, 0)
-             ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)'
+        return EnrollmentPlacement::nextProcessNumber(
+            $database,
+            $schoolId,
+            $academicYearId
         );
-        $ensureSequence->execute([
-            'escola_id' => $schoolId,
-            'ano_lectivo_id' => $academicYearId
-        ]);
-
-        $sequenceQuery = $database->prepare(
-            'SELECT ultimo_numero FROM sequencias_processos
-             WHERE escola_id = :escola_id
-               AND ano_lectivo_id = :ano_lectivo_id
-             FOR UPDATE'
-        );
-        $sequenceQuery->execute([
-            'escola_id' => $schoolId,
-            'ano_lectivo_id' => $academicYearId
-        ]);
-        $lastNumber = (int) $sequenceQuery->fetchColumn();
-
-        $existingMaximum = $database->prepare(
-            'SELECT COALESCE(MAX(numero_processo), 0)
-             FROM matriculas
-             WHERE escola_id = :escola_id
-               AND ano_lectivo_id = :ano_lectivo_id'
-        );
-        $existingMaximum->execute([
-            'escola_id' => $schoolId,
-            'ano_lectivo_id' => $academicYearId
-        ]);
-        $lastNumber = max($lastNumber, (int) $existingMaximum->fetchColumn());
-        if ($lastNumber >= 4294967295) {
-            throw new \RuntimeException(
-                'A sequência de números de processo atingiu o limite permitido.'
-            );
-        }
-
-        $nextNumber = $lastNumber + 1;
-        $updateSequence = $database->prepare(
-            'UPDATE sequencias_processos
-             SET ultimo_numero = :numero
-             WHERE escola_id = :escola_id
-               AND ano_lectivo_id = :ano_lectivo_id'
-        );
-        $updateSequence->execute([
-            'numero' => $nextNumber,
-            'escola_id' => $schoolId,
-            'ano_lectivo_id' => $academicYearId
-        ]);
-
-        return $nextNumber;
     }
 
     private function findSchool(
@@ -3083,32 +2941,7 @@ class AdminController extends Controller
         int $studentId,
         int $schoolId
     ): void {
-        $statement = $database->prepare(
-            "INSERT INTO aluno_escolas
-                (aluno_id, escola_id, codigo_aluno_escola,
-                 data_entrada, estado)
-             VALUES
-                (:aluno_id, :escola_id, :codigo, CURRENT_DATE, 'activo')"
-        );
-
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            try {
-                $statement->execute([
-                    'aluno_id' => $studentId,
-                    'escola_id' => $schoolId,
-                    'codigo' => 'SGECE-AE-' . strtoupper(bin2hex(random_bytes(16)))
-                ]);
-                return;
-            } catch (\PDOException $exception) {
-                if ((int) ($exception->errorInfo[1] ?? 0) !== 1062) {
-                    throw $exception;
-                }
-            }
-        }
-
-        throw new \RuntimeException(
-            'Não foi possível gerar um código único para a associação do aluno à escola.'
-        );
+        StudentIdentity::associateWithSchool($database, $studentId, $schoolId);
     }
 
     private function asciiText(string $value): string
@@ -3784,7 +3617,8 @@ class AdminController extends Controller
 
         $statement = $database->prepare(
             "SELECT a.id, a.codigo_central, a.nome_completo, a.data_nascimento,
-                    a.sexo, a.estado, e.nome AS escola_nome, e.distrito
+                    a.sexo, a.estado,
+                    e.nome AS escola_nome, e.distrito
              FROM alunos a
              LEFT JOIN aluno_escolas ae ON ae.id = (
                  SELECT ae2.id
@@ -3819,7 +3653,7 @@ class AdminController extends Controller
                 if ($editId !== false) {
                     $edit = $database->prepare(
                         'SELECT id, codigo_central, nome_completo, data_nascimento,
-                                sexo, nome_pai, nome_mae, contacto, endereco
+                                naturalidade, sexo, nome_pai, nome_mae, contacto, endereco
                          FROM alunos WHERE id = :id'
                     );
                     $edit->execute(['id' => $editId]);
@@ -3852,6 +3686,7 @@ class AdminController extends Controller
                 'codigo_central' => '',
                 'nome_completo' => '',
                 'data_nascimento' => '',
+                'naturalidade' => '',
                 'sexo' => '',
                 'bi' => '',
                 'distrito' => '',
@@ -3953,10 +3788,12 @@ class AdminController extends Controller
         $parameters = [];
         if ($search !== '') {
             $conditions[] = '(codigo LIKE :codigo OR nome LIKE :nome
+                OR nome_director LIKE :nome_director
                 OR provincia LIKE :provincia OR distrito LIKE :distrito)';
             $pattern = '%' . $search . '%';
             $parameters['codigo'] = $pattern;
             $parameters['nome'] = $pattern;
+            $parameters['nome_director'] = $pattern;
             $parameters['provincia'] = $pattern;
             $parameters['distrito'] = $pattern;
         }
@@ -3973,7 +3810,7 @@ class AdminController extends Controller
         $page = min($page, $totalPages);
 
         $statement = $database->prepare(
-            'SELECT id, codigo, nome, tipo, provincia, distrito, localidade,
+            'SELECT id, codigo, nome, nome_director, tipo, provincia, distrito, localidade,
                     telefone, email, estado
              FROM escolas' . $where . '
              ORDER BY nome, id
@@ -3999,7 +3836,7 @@ class AdminController extends Controller
                     : false;
                 if ($editId !== false) {
                     $edit = $database->prepare(
-                        'SELECT id, codigo, nome, tipo, provincia, distrito,
+                        'SELECT id, codigo, nome, nome_director, tipo, provincia, distrito,
                                 localidade, endereco, telefone
                          FROM escolas WHERE id = :id'
                     );
@@ -4031,6 +3868,7 @@ class AdminController extends Controller
                 'id' => '',
                 'codigo' => '',
                 'nome' => '',
+                'nome_director' => '',
                 'tipo' => '',
                 'provincia' => self::SCHOOL_PROVINCE,
                 'distrito' => '',

@@ -374,9 +374,11 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                             <div class="list-group mb-4">
                                 <?php foreach ($documentos as $documento): ?>
                                     <?php
-                                    $documentLabel = $documento['tipo_documento'] === 'certificado'
-                                        ? 'Certificado escolar'
-                                        : 'Declaração escolar';
+                                    $documentLabel = match ($documento['tipo_documento']) {
+                                        'certificado' => 'Certificado escolar',
+                                        'declaracao_notas' => 'Declaração de notas',
+                                        default => 'Declaração escolar'
+                                    };
                                     ?>
                                     <div class="list-group-item">
                                         <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">

@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS pedidos_documentos (
     codigo VARCHAR(32) NOT NULL UNIQUE,
     escola_id BIGINT UNSIGNED NOT NULL,
     aluno_escola_id BIGINT UNSIGNED NOT NULL,
+    matricula_id BIGINT UNSIGNED NULL,
     tipo_documento VARCHAR(20) NOT NULL,
     motivo VARCHAR(500) NOT NULL,
     estado VARCHAR(20) NOT NULL DEFAULT 'pendente',
@@ -50,6 +51,9 @@ CREATE TABLE IF NOT EXISTS pedidos_documentos (
     CONSTRAINT fk_pedido_documento_aluno_escola
         FOREIGN KEY (aluno_escola_id)
         REFERENCES aluno_escolas(id),
+    CONSTRAINT fk_pedido_documento_matricula
+        FOREIGN KEY (matricula_id)
+        REFERENCES matriculas(id),
     CONSTRAINT fk_pedido_documento_solicitado_por
         FOREIGN KEY (solicitado_por)
         REFERENCES usuarios(id),
@@ -58,5 +62,6 @@ CREATE TABLE IF NOT EXISTS pedidos_documentos (
         REFERENCES usuarios(id),
 
     INDEX idx_pedido_documento_escola_estado (escola_id, estado),
-    INDEX idx_pedido_documento_tipo_estado (tipo_documento, estado)
+    INDEX idx_pedido_documento_tipo_estado (tipo_documento, estado),
+    INDEX idx_pedido_documento_matricula (matricula_id)
 ) ENGINE=InnoDB;

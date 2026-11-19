@@ -9,36 +9,103 @@ final class SchoolPdfGenerator
 {
     public function issuedDocument(array $document): string
     {
-        $typeLabel = $document['tipo_documento'] === 'certificado'
-            ? 'Certificado escolar'
-            : 'Declaração escolar';
+        $isQuarterlyStatement = $document['tipo_documento'] === 'declaracao_notas';
+        $isAnnualDocument = in_array(
+            $document['tipo_documento'],
+            ['certificado', 'declaracao'],
+            true
+        );
+        $typeLabel = match ($document['tipo_documento']) {
+            'certificado' => 'Certificado de habilitações',
+            'declaracao_notas' => 'Declaração de notas',
+            default => 'Declaração'
+        };
         $body = nl2br($this->escape($document['conteudo_documento']), false);
+        $location = implode(' · ', array_filter([
+            trim((string) ($document['escola_localidade'] ?? '')),
+            trim((string) ($document['escola_distrito'] ?? '')),
+            trim((string) ($document['escola_provincia'] ?? ''))
+        ]));
+        $gradeRows = '';
+        foreach ($document['annual_grades'] ?? [] as $grade) {
+            $gradeRows .= '<tr><td>' . $this->escape($grade['disciplina'])
+                . '</td><td class="grade">' . $this->grade($grade['media_anual'])
+                . ' valores</td></tr>';
+        }
+        $quarterRows = '';
+        foreach ($document['quarter_grades'] ?? [] as $grade) {
+            $quarterRows .= '<tr><td>' . $this->escape($grade['disciplina'])
+                . '</td><td class="grade">' . (int) $grade['trimestre']
+                . '.º trimestre</td><td class="grade">'
+                . $this->grade($grade['media']) . ' valores</td></tr>';
+        }
+        $gradeTable = $isAnnualDocument
+            ? '<table class="grades"><thead><tr><th>Disciplina</th>'
+                . '<th>Média final anual</th></tr></thead><tbody>'
+                . $gradeRows . '</tbody></table>'
+                . '<p class="final-average">Média final geral: <strong>'
+                . $this->grade($document['media_final'] ?? null) . ' valores</strong></p>'
+            : ($isQuarterlyStatement
+                ? '<table class="grades"><thead><tr><th>Disciplina</th>'
+                    . '<th>Trimestre concluído</th><th>Média trimestral</th>'
+                    . '</tr></thead><tbody>' . $quarterRows . '</tbody></table>'
+                : '');
+        $director = trim((string) ($document['escola_director'] ?? ''));
+        $directorName = $director === '' ? '' : '<br><strong>' . $this->escape($director) . '</strong>';
+        $issuedLocation = trim((string) ($document['escola_localidade'] ?? ''));
+        if ($issuedLocation === '') {
+            $issuedLocation = $document['escola_distrito'];
+        }
+        $reference = '<p class="reference">Aluno: <strong>'
+            . $this->escape($document['aluno_nome']) . '</strong> ('
+            . $this->escape($document['codigo_central']) . ')'
+            . '<br>Classe: ' . $this->escape($document['classe_nome'])
+            . ' · Turma ' . $this->escape($document['turma_nome'])
+            . ' · Ano lectivo ' . $this->escape($document['ano_lectivo']) . '</p>';
+        if ($isAnnualDocument) {
+            $reference = '<p class="reference">Código do aluno: <strong>'
+                . $this->escape($document['codigo_central']) . '</strong></p>';
+        }
         $html = '<!doctype html><html lang="pt"><head><meta charset="UTF-8"><style>'
             . $this->baseStyles()
-            . 'body{font-size:14px}.document{border:3px double #183b64;padding:38px;min-height:690px}'
-            . '.issuer{text-align:center;line-height:1.55}.issuer strong{font-size:18px}'
-            . '.emblem{display:block;width:74px;height:74px;margin:0 auto 10px;object-fit:contain}'
-            . 'h1{text-align:center;font-size:23px;margin:42px 0 24px;text-transform:uppercase}'
-            . '.body{font-size:16px;line-height:1.9;text-align:justify;min-height:170px}'
-            . '.reference{margin-top:24px;color:#334155;font-size:11px}'
-            . '.signatures{margin-top:70px;width:100%;border-collapse:collapse;text-align:center}'
-            . '.signatures td{width:50%;padding:0 20px;vertical-align:bottom;height:65px}'
-            . '.sign-line{border-top:1px solid #1e293b;padding-top:8px}'
-            . '.verify{margin-top:28px;padding-top:10px;border-top:1px solid #cbd5e1;font-size:10px;color:#334155}'
+            . '@page{margin:28px}'
+            . 'body{font-size:11px;color:#172033}'
+            . '.document{border:3px double #183b64;padding:24px;min-height:690px}'
+            . '.emblem-wrap{text-align:center}'
+            . '.emblem{display:inline-block;width:64px;height:64px;margin:0 0 8px;object-fit:contain}'
+            . '.issuer{text-align:center;line-height:1.45;border-bottom:2px solid #d5aa45;padding-bottom:10px}'
+            . '.issuer .country{font-size:11px;font-weight:bold;letter-spacing:1px}'
+            . '.issuer .ministry,.issuer .location{font-size:9px;color:#334155}'
+            . '.issuer .school{display:block;font-size:14px;color:#183b64;margin-top:3px;text-transform:uppercase}'
+            . 'h1{text-align:center;color:#183b64;font-size:21px;margin:24px 0 18px;text-transform:uppercase}'
+            . '.body{font-size:13px;line-height:1.7;text-align:justify;margin:14px 0}'
+            . '.grades{width:100%;border-collapse:collapse;margin:15px 0 4px;font-size:10px}'
+            . '.grades th,.grades td{border:1px solid #94a3b8;padding:5px 7px}'
+            . '.grades th{background:#f1f5f9;color:#183b64;text-align:left}'
+            . '.grades .grade{text-align:center;width:34%}'
+            . '.final-average{text-align:right;font-size:12px;margin:8px 0}'
+            . '.reference{margin-top:14px;color:#334155;font-size:10px}'
+            . '.signatures{margin-top:42px;width:100%;border-collapse:collapse;text-align:center}'
+            . '.signatures td{width:50%;padding:0 20px;vertical-align:bottom;height:70px}'
+            . '.sign-line{border-top:1px solid #1e293b;padding-top:7px}'
+            . '.issued-at{text-align:center;margin-top:22px;font-size:10px}'
+            . '.verify{margin-top:18px;padding-top:8px;border-top:1px solid #cbd5e1;font-size:9px;color:#334155;text-align:center}'
             . '</style></head><body><main class="document">'
-            . $this->coatOfArmsImage()
-            . '<header class="issuer"><strong>Sistema de Gestão e Emissão de Certificados Escolares</strong><br>'
-            . '<strong>' . $this->escape($document['escola_nome']) . '</strong><br>'
-            . $this->escape($document['escola_distrito']) . ' — '
-            . $this->escape($document['escola_provincia']) . '</header>'
+            . '<div class="emblem-wrap">' . $this->coatOfArmsImage() . '</div>'
+            . '<header class="issuer"><strong class="country">REPÚBLICA DE MOÇAMBIQUE</strong><br>'
+            . '<span class="ministry">MINISTÉRIO DA EDUCAÇÃO E DESENVOLVIMENTO HUMANO</span><br>'
+            . '<span class="location">PROVÍNCIA DE ' . $this->escape($document['escola_provincia'])
+            . ' · GOVERNO DO DISTRITO DE ' . $this->escape($document['escola_distrito']) . '</span><br>'
+            . '<strong class="school">' . $this->escape($document['escola_nome']) . '</strong>'
+            . '<span class="location">' . $this->escape($location) . '</span></header>'
             . '<h1>' . $this->escape($typeLabel) . '</h1>'
             . '<div class="body">' . $body . '</div>'
-            . '<p class="reference">Aluno: <strong>' . $this->escape($document['aluno_nome'])
-            . '</strong> (' . $this->escape($document['codigo_central']) . ')</p>'
-            . '<p class="reference">Referência: ' . $this->escape($document['codigo'])
-            . '<br>Emitido em: ' . $this->escape($document['emitido_em']) . '</p>'
-            . '<table class="signatures"><tr><td><div class="sign-line">Director da Escola</div></td>'
-            . '<td><div class="sign-line">Chefe da Secretaria</div></td></tr></table>'
+            . $gradeTable
+            . $reference
+            . '<p class="issued-at">' . $this->escape($issuedLocation)
+            . ', aos ' . $this->escape(date('d/m/Y', strtotime($document['emitido_em']))) . '</p>'
+            . '<table class="signatures"><tr><td><div class="sign-line">Chefe da Secretaria</div></td>'
+            . '<td><div class="sign-line">Director da Escola' . $directorName . '</div></td></tr></table>'
             . '<div class="verify">Código de validação: <strong>'
             . $this->escape($document['codigo_validacao']) . '</strong></div>'
             . '</main></body></html>';
@@ -48,12 +115,15 @@ final class SchoolPdfGenerator
 
     public function documentRequestReceipt(array $receipt): string
     {
-        $typeLabel = $receipt['tipo_documento'] === 'certificado'
-            ? 'Certificado escolar'
-            : 'Declaração escolar';
+        $typeLabel = match ($receipt['tipo_documento']) {
+            'certificado' => 'Certificado escolar',
+            'declaracao_notas' => 'Declaração de notas',
+            default => 'Declaração escolar'
+        };
         $statusLabels = [
             'pendente' => 'Pendente',
             'em_analise' => 'Em análise',
+            'aprovado' => 'Aprovado para emissão',
             'emitido' => 'Emitido',
             'rejeitado' => 'Rejeitado'
         ];
@@ -87,24 +157,41 @@ final class SchoolPdfGenerator
         $completedAt = empty($receipt['concluido_em'])
             ? '—'
             : $this->escape($receipt['concluido_em']);
+        $schoolLocation = implode(' · ', array_filter([
+            trim((string) ($receipt['escola_localidade'] ?? '')),
+            trim((string) ($receipt['escola_distrito'] ?? '')),
+            trim((string) ($receipt['escola_provincia'] ?? ''))
+        ]));
+        $studentClass = implode(' · ', array_filter([
+            trim((string) ($receipt['classe_nome'] ?? '')),
+            trim((string) ($receipt['turma_nome'] ?? '')),
+            trim((string) ($receipt['ano_lectivo'] ?? ''))
+        ]));
         $html = '<!doctype html><html lang="pt"><head><meta charset="UTF-8"><style>'
             . $this->baseStyles()
-            . '@page{margin:22px}'
-            . 'body{font-size:11px;color:#172033}'
-            . '.receipt{border:2px solid #183b64;padding:22px}'
-            . '.emblem{display:block;width:60px;height:60px;margin:0 auto 8px;object-fit:contain}'
-            . '.issuer{text-align:center;line-height:1.45;border-bottom:1px solid #cbd5e1;padding-bottom:8px}'
-            . '.issuer strong{font-size:12px}'
-            . 'h1{text-align:center;color:#183b64;font-size:17px;margin:14px 0 4px}'
+            . '@page{margin:26px}'
+            . 'body{font-size:10px;color:#172033}'
+            . '.receipt{border:1px solid #cbd5e1;border-top:5px solid #183b64;padding:20px}'
+            . '.emblem-wrap{text-align:center}'
+            . '.emblem{display:inline-block;width:56px;height:56px;margin:0 0 6px;object-fit:contain}'
+            . '.issuer{text-align:center;line-height:1.45;border-bottom:2px solid #d5aa45;padding-bottom:10px}'
+            . '.issuer .country{font-size:9px;letter-spacing:1px;color:#475569}'
+            . '.issuer .school{display:block;font-size:14px;color:#183b64;margin-top:3px}'
+            . '.issuer .location{font-size:9px;color:#475569}'
+            . 'h1{text-align:center;color:#183b64;font-size:18px;margin:15px 0 4px}'
             . '.status{text-align:center;font-weight:bold;margin:0 0 12px;color:#334155}'
-            . '.request-code{text-align:center;border:1px solid #cbd5e1;background:#f8fafc;'
-            . 'padding:9px;font-size:13px;font-weight:bold;letter-spacing:.5px}'
-            . '.details{width:100%;border-collapse:collapse;margin:12px 0}'
-            . '.details td{border-bottom:1px solid #e2e8f0;padding:6px 4px;vertical-align:top}'
-            . '.details td:first-child{width:34%;font-weight:bold;color:#183b64}'
-            . '.reason,.response{line-height:1.5;margin:10px 0}'
+            . '.request-code{text-align:center;border:1px solid #d5aa45;background:#fffbeb;'
+            . 'padding:10px;font-size:14px;font-weight:bold;letter-spacing:.7px}'
+            . '.section{margin-top:14px}'
+            . '.section-title{font-size:10px;color:#183b64;text-transform:uppercase;'
+            . 'border-bottom:1px solid #cbd5e1;padding-bottom:4px;margin:0 0 5px}'
+            . '.details{width:100%;border-collapse:collapse;margin:0}'
+            . '.details td{border-bottom:1px solid #e2e8f0;padding:5px 4px;vertical-align:top}'
+            . '.details td:first-child{width:29%;font-weight:bold;color:#183b64}'
+            . '.reason,.response{line-height:1.5;margin:10px 0;padding:9px 10px;'
+            . 'background:#f8fafc;border-left:3px solid #94a3b8}'
             . '.validation{margin-top:14px;padding:12px;border:1px solid #16a34a;background:#f0fdf4}'
-            . '.validation h2{font-size:12px;color:#166534;margin:0 0 6px}'
+            . '.validation h2{font-size:11px;color:#166534;margin:0 0 6px}'
             . '.validation-code{text-align:center;font-size:14px;font-weight:bold;letter-spacing:1px;'
             . 'background:#fff;border:1px dashed #166534;padding:8px}'
             . '.validation-path{font-size:9px;overflow-wrap:anywhere;margin:8px 0 0}'
@@ -112,26 +199,40 @@ final class SchoolPdfGenerator
             . '.footer{margin-top:14px;padding-top:8px;border-top:1px solid #cbd5e1;'
             . 'font-size:9px;color:#475569;text-align:center}'
             . '</style></head><body><main class="receipt">'
-            . $this->coatOfArmsImage()
-            . '<header class="issuer"><strong>RECIBO DO SGECE</strong><br>'
-            . '<strong>' . $this->escape($receipt['escola_nome']) . '</strong><br>'
-            . $this->escape($receipt['escola_distrito']) . ' — '
-            . $this->escape($receipt['escola_provincia']) . '</header>'
+            . '<div class="emblem-wrap">' . $this->coatOfArmsImage() . '</div>'
+            . '<header class="issuer"><div class="country">REPÚBLICA DE MOÇAMBIQUE · SGECE</div>'
+            . '<strong class="school">' . $this->escape($receipt['escola_nome']) . '</strong>'
+            . '<div class="location">' . $this->escape($schoolLocation) . '</div></header>'
             . '<h1>' . ($isIssued ? 'RECIBO DE EMISSÃO' : 'RECIBO DO PEDIDO') . '</h1>'
             . '<p class="status">' . $this->escape($status) . '</p>'
             . '<div class="request-code">Protocolo: '
             . $this->escape($receipt['request_code']) . '</div>'
+            . '<section class="section"><h2 class="section-title">Dados da escola</h2>'
             . '<table class="details"><tbody>'
-            . '<tr><td>Aluno</td><td>' . $this->escape($receipt['aluno_nome']) . '</td></tr>'
+            . '<tr><td>Código da escola</td><td>'
+            . $this->escape($receipt['escola_codigo'] ?? '—') . '</td></tr>'
+            . '<tr><td>Endereço</td><td>'
+            . $this->escape($receipt['escola_endereco'] ?? '—') . '</td></tr>'
+            . '<tr><td>Director</td><td>'
+            . $this->escape($receipt['escola_director'] ?? '—') . '</td></tr>'
+            . '</tbody></table></section>'
+            . '<section class="section"><h2 class="section-title">Dados do aluno</h2>'
+            . '<table class="details"><tbody>'
+            . '<tr><td>Nome</td><td>' . $this->escape($receipt['aluno_nome']) . '</td></tr>'
             . '<tr><td>Código do aluno</td><td>'
             . $this->escape($receipt['codigo_central']) . '</td></tr>'
+            . '<tr><td>Classe · turma · ano</td><td>'
+            . $this->escape($studentClass === '' ? '—' : $studentClass) . '</td></tr>'
+            . '</tbody></table></section>'
+            . '<section class="section"><h2 class="section-title">Dados do pedido</h2>'
+            . '<table class="details"><tbody>'
             . '<tr><td>Documento</td><td>' . $this->escape($typeLabel) . '</td></tr>'
             . '<tr><td>Pedido submetido</td><td>'
             . $this->escape($receipt['solicitado_em']) . '</td></tr>'
             . '<tr><td>Documento emitido</td><td>' . $issuedAt . '</td></tr>'
             . '<tr><td>Pedido concluído</td><td>' . $completedAt . '</td></tr>'
-            . '</tbody></table>'
-            . '<p class="reason"><strong>Motivo:</strong><br>'
+            . '</tbody></table></section>'
+            . '<p class="reason"><strong>Motivo do pedido</strong><br>'
             . nl2br($this->escape($receipt['motivo']), false) . '</p>'
             . $responseBlock
             . $validationBlock

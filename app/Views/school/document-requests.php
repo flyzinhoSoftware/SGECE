@@ -5,6 +5,7 @@ $escape = static function ($value): string {
 $statusClasses = [
     'pendente' => 'warning',
     'em_analise' => 'info',
+    'aprovado' => 'primary',
     'emitido' => 'success',
     'rejeitado' => 'danger'
 ];
@@ -13,8 +14,8 @@ $statusClasses = [
     <div class="page-heading">
         <div>
             <span class="page-eyebrow">GESTÃO ESCOLAR</span>
-            <h1>Pedidos de certificados e declarações</h1>
-            <p>Submeta pedidos dos alunos da escola e acompanhe a análise administrativa.</p>
+            <h1>Pedidos de documentos escolares</h1>
+            <p>Peça documentos de anos lectivos concluídos ou declarações das notas já completas no ano activo.</p>
         </div>
     </div>
 
@@ -29,35 +30,55 @@ $statusClasses = [
             <h2 class="h5 mb-0">Novo pedido</h2>
         </div>
         <div class="card-body">
-            <?php if ($students === []): ?>
+            <?php if ($eligibleEnrollments === []): ?>
                 <div class="alert alert-info mb-0" role="status">
-                    Não existem alunos associados a esta escola para seleccionar.
+                    Não existem alunos elegíveis. Para anos encerrados, são necessárias notas anuais completas e aprovação; no ano activo, pelo menos um trimestre completo.
                 </div>
             <?php else: ?>
                 <form method="post" action="<?= $escape($basePath) ?>/escola/pedidos-documentos">
                     <input type="hidden" name="_csrf_token" value="<?= $escape($csrfToken) ?>">
+                    <input type="hidden" name="tipo_documento" id="tipo_documento" value="">
                     <div class="row g-3">
-                        <div class="col-lg-5">
-                            <label class="form-label" for="aluno_escola_id">Aluno</label>
-                            <select class="form-select" name="aluno_escola_id" id="aluno_escola_id" required>
-                                <option value="">Seleccione um aluno</option>
-                                <?php foreach ($students as $student): ?>
-                                    <option value="<?= (int) $student['aluno_escola_id'] ?>">
-                                        <?= $escape($student['nome_completo']) ?>
-                                        (<?= $escape($student['codigo_central']) ?>)
-                                        <?= $student['associacao_estado'] === 'activo' ? '' : ' — Histórico' ?>
+                        <div class="col-lg-4">
+                            <label class="form-label" for="classe_id">1. Classe</label>
+                            <select class="form-select" name="classe_id" id="classe_id" required>
+                                <option value="">Seleccione uma classe</option>
+                                <?php foreach ($classes as $class): ?>
+                                    <option value="<?= (int) $class['id'] ?>">
+                                        <?= $escape($class['nome']) ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="col-lg-3">
-                            <label class="form-label" for="tipo_documento">Documento</label>
-                            <select class="form-select" name="tipo_documento" id="tipo_documento" required>
-                                <option value="">Seleccione</option>
-                                <?php foreach ($documentTypes as $type => $label): ?>
-                                    <option value="<?= $escape($type) ?>"><?= $escape($label) ?></option>
+                        <div class="col-lg-4">
+                            <label class="form-label" for="turma_id">2. Turma</label>
+                            <select class="form-select" name="turma_id" id="turma_id" required disabled>
+                                <option value="">Seleccione primeiro uma classe</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-4">
+                            <label class="form-label" for="matricula_id">3. Aluno</label>
+                            <select class="form-select" name="matricula_id" id="matricula_id" required disabled>
+                                <option value="">Seleccione primeiro uma turma</option>
+                                <?php foreach ($eligibleEnrollments as $enrollment): ?>
+                                    <option value="<?= (int) $enrollment['matricula_id'] ?>"
+                                            data-classe-id="<?= (int) $enrollment['classe_id'] ?>"
+                                            data-turma-id="<?= (int) $enrollment['turma_id'] ?>"
+                                            data-turma-nome="<?= $escape($enrollment['turma_nome']) ?>"
+                                            data-ano="<?= (int) $enrollment['ano'] ?>"
+                                            data-tipo-documento="<?= $escape($enrollment['tipo_documento']) ?>"
+                                            data-trimestres="<?= $escape(implode(',', $enrollment['trimestres_concluidos'])) ?>">
+                                        <?= $escape($enrollment['nome_completo']) ?>
+                                        (<?= $escape($enrollment['codigo_central']) ?>)
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
+                        </div>
+                        <div class="col-12">
+                            <div class="small text-muted">
+                                Documento aplicável:
+                                <strong id="document-type-label">Seleccione um aluno.</strong>
+                            </div>
                         </div>
                         <div class="col-12">
                             <label class="form-label" for="motivo">Motivo do pedido</label>
@@ -69,8 +90,10 @@ $statusClasses = [
                                 <i class="bi bi-send me-1"></i>Submeter pedido
                             </button>
                             <p class="form-text mb-0 mt-2">
-                                Depois de submeter, imprima o recibo no histórico. Quando o documento
-                                for emitido, o recibo incluirá o código para consulta de autenticidade.
+                                Para anos encerrados, a classe determina o certificado ou a declaração
+                                anual e são exigidas notas completas e aprovação. Durante o ano activo,
+                                pode pedir uma declaração com as notas dos trimestres completos, mesmo
+                                sem aprovação. A emissão fica disponível após aprovação administrativa.
                             </p>
                         </div>
                     </div>
@@ -95,8 +118,8 @@ $statusClasses = [
                             <th>Documento</th>
                             <th>Data</th>
                             <th>Estado</th>
-                            <th>Resposta administrativa</th>
-                            <th>Recibo</th>
+                            <th>Nota de emissão / resposta</th>
+                            <th>Documento / recibo</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -109,6 +132,13 @@ $statusClasses = [
                                 <td>
                                     <?= $escape($request['nome_completo']) ?>
                                     <div class="small text-muted"><?= $escape($request['codigo_central']) ?></div>
+                                    <?php if (!empty($request['classe_nome'])): ?>
+                                        <div class="small text-muted">
+                                            <?= $escape($request['classe_nome']) ?> ·
+                                            <?= $escape($request['turma_nome']) ?> ·
+                                            <?= $escape($request['ano_lectivo']) ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </td>
                                 <td><?= $escape($documentTypes[$request['tipo_documento']] ?? $request['tipo_documento']) ?></td>
                                 <td>
@@ -125,7 +155,14 @@ $statusClasses = [
                                     </span>
                                 </td>
                                 <td>
-                                    <?= $escape($request['resposta_admin'] ?: '—') ?>
+                                    <?php if (!empty($request['resposta_admin'])): ?>
+                                        <?php if ($request['estado'] === 'aprovado'): ?>
+                                            <strong>Nota de emissão:</strong><br>
+                                        <?php endif; ?>
+                                        <?= $escape($request['resposta_admin']) ?>
+                                    <?php else: ?>
+                                        —
+                                    <?php endif; ?>
                                     <?php if ($request['estado'] === 'emitido' && !empty($request['codigo_validacao'])): ?>
                                         <div class="d-flex flex-column gap-1 mt-2">
                                             <div class="small">
@@ -142,13 +179,27 @@ $statusClasses = [
                                     <?php endif; ?>
                                 </td>
                                 <td>
+                                    <?php if ($request['estado'] === 'aprovado'): ?>
+                                        <form method="post"
+                                              action="<?= $escape($basePath) ?>/escola/pedidos-documentos/emitir"
+                                              target="_blank" class="mb-2">
+                                            <input type="hidden" name="_csrf_token" value="<?= $escape($csrfToken) ?>">
+                                            <input type="hidden" name="pedido_id" value="<?= (int) $request['id'] ?>">
+                                            <button class="btn btn-sm btn-primary" type="submit">
+                                                <i class="bi bi-file-earmark-check me-1"></i>
+                                                Emitir <?= $request['tipo_documento'] === 'certificado'
+                                                    ? 'certificado'
+                                                    : ($request['tipo_documento'] === 'declaracao_notas'
+                                                        ? 'declaração de notas'
+                                                        : 'declaração') ?>
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
                                     <a class="btn btn-sm btn-outline-primary"
                                        href="<?= $escape($basePath) ?>/escola/pedidos-documentos/recibo.pdf?pedido_id=<?= (int) $request['id'] ?>"
-                                       target="_blank" rel="noopener">
-                                        <i class="bi bi-printer me-1"></i>
-                                        <?= $request['estado'] === 'emitido'
-                                            ? 'Imprimir recibo de validação'
-                                            : 'Imprimir recibo do pedido' ?>
+                                       target="_blank" rel="noopener"
+                                       title="Abre o recibo PDF numa nova aba">
+                                        <i class="bi bi-file-earmark-pdf me-1"></i>Abrir recibo PDF
                                     </a>
                                 </td>
                             </tr>
@@ -159,3 +210,98 @@ $statusClasses = [
         <?php endif; ?>
     </div>
 </section>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const classSelect = document.getElementById('classe_id');
+    const classroomSelect = document.getElementById('turma_id');
+    const studentSelect = document.getElementById('matricula_id');
+    const documentType = document.getElementById('tipo_documento');
+    const documentTypeLabel = document.getElementById('document-type-label');
+
+    if (!classSelect || !classroomSelect || !studentSelect || !documentType || !documentTypeLabel) {
+        return;
+    }
+
+    const studentOptions = Array.from(studentSelect.querySelectorAll('option[data-classe-id]'));
+
+    function resetSelect(select, placeholder) {
+        select.replaceChildren(new Option(placeholder, ''));
+        select.value = '';
+        select.disabled = true;
+    }
+
+    function updateDocumentType() {
+        const selectedStudent = studentSelect.options[studentSelect.selectedIndex];
+        documentType.value = selectedStudent && selectedStudent.value
+            ? selectedStudent.dataset.tipoDocumento
+            : '';
+        if (documentType.value === 'declaracao_notas') {
+            const quarters = (selectedStudent.dataset.trimestres || '')
+                .split(',')
+                .filter(Boolean)
+                .map(function (quarter) {
+                    return quarter + '.º trimestre';
+                });
+            documentTypeLabel.textContent = 'Declaração de notas · ' + quarters.join(', ');
+        } else if (documentType.value === 'certificado') {
+            documentTypeLabel.textContent = 'Certificado anual';
+        } else if (documentType.value === 'declaracao') {
+            documentTypeLabel.textContent = 'Declaração anual';
+        } else {
+            documentTypeLabel.textContent = 'Seleccione um aluno.';
+        }
+    }
+
+    classSelect.addEventListener('change', function () {
+        const classId = classSelect.value;
+        resetSelect(classroomSelect, classId ? 'Seleccione uma turma' : 'Seleccione primeiro uma classe');
+        resetSelect(studentSelect, 'Seleccione primeiro uma turma');
+        updateDocumentType();
+
+        if (!classId) {
+            return;
+        }
+
+        const classrooms = new Map();
+        studentOptions.forEach(function (option) {
+            if (option.dataset.classeId === classId) {
+                classrooms.set(option.dataset.turmaId, option.dataset.turmaId);
+            }
+        });
+
+        classrooms.forEach(function (turmaId) {
+            const student = studentOptions.find(function (option) {
+                return option.dataset.classeId === classId && option.dataset.turmaId === turmaId;
+            });
+            if (student) {
+                classroomSelect.add(new Option(
+                    student.dataset.turmaNome + ' · ' + student.dataset.ano,
+                    turmaId
+                ));
+            }
+        });
+        classroomSelect.disabled = classrooms.size === 0;
+    });
+
+    classroomSelect.addEventListener('change', function () {
+        const classId = classSelect.value;
+        const turmaId = classroomSelect.value;
+        resetSelect(studentSelect, turmaId ? 'Seleccione um aluno' : 'Seleccione primeiro uma turma');
+
+        if (!classId || !turmaId) {
+            return;
+        }
+
+        studentOptions.forEach(function (option) {
+            if (option.dataset.classeId === classId && option.dataset.turmaId === turmaId) {
+                studentSelect.add(option.cloneNode(true));
+            }
+        });
+        studentSelect.disabled = studentSelect.options.length <= 1;
+        updateDocumentType();
+    });
+
+    studentSelect.addEventListener('change', updateDocumentType);
+});
+</script>

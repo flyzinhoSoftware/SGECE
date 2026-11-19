@@ -4,12 +4,17 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Core\Session;
+use App\Services\AcademicYearCompletion;
+use App\Services\DocumentRequestIssuer;
+use App\Services\EnrollmentPlacement;
 use App\Services\SchoolPdfGenerator;
+use App\Services\StudentIdentity;
 use Config\Database;
 
 class SchoolController extends Controller
 {
     private const PASSING_GRADE = 10.0;
+    private const STUDENT_SEXES = ['Feminino', 'Masculino'];
 
     public function dashboard(): void
     {
@@ -68,11 +73,394 @@ class SchoolController extends Controller
         );
     }
 
+    public function students(): void
+    {
+        $user = $this->requireSchoolUser();
+        $this->renderSchoolStudents($user);
+    }
+
+    public function saveStudent(): void
+    {
+        $user = $this->requireSchoolUser();
+        if (!$this->hasValidCsrfToken()) {
+            return;
+        }
+
+        $limits = [
+            'nome_completo' => 180,
+            'data_nascimento' => 10,
+            'naturalidade' => 180,
+            'sexo' => 20,
+            'bi' => 30,
+            'nome_pai' => 150,
+            'nome_mae' => 150,
+            'contacto' => 30,
+            'endereco' => 255
+        ];
+        $values = array_fill_keys(array_keys($limits), '');
+        $errors = [];
+        foreach ($limits as $field => $limit) {
+            $values[$field] = trim($this->postedString($field));
+            $length = preg_match_all('/./us', $values[$field]);
+            if ($length === false) {
+                $errors[$field] = 'Use texto válido em UTF-8.';
+            } elseif ($length > $limit) {
+                $errors[$field] = "O limite é de {$limit} caracteres.";
+            }
+        }
+
+        foreach (
+            ['nome_completo', 'data_nascimento', 'naturalidade', 'sexo', 'bi']
+            as $required
+        ) {
+            if ($values[$required] === '') {
+                $errors[$required] = 'Este campo é obrigatório.';
+            }
+        }
+        if ($values['data_nascimento'] !== '' && !isset($errors['data_nascimento'])) {
+            $birthDate = \DateTimeImmutable::createFromFormat(
+                '!Y-m-d',
+                $values['data_nascimento']
+            );
+            $dateErrors = \DateTimeImmutable::getLastErrors();
+            if (
+                $birthDate === false
+                || ($dateErrors !== false && (
+                    $dateErrors['warning_count'] > 0
+                    || $dateErrors['error_count'] > 0
+                ))
+                || $birthDate->format('Y-m-d') !== $values['data_nascimento']
+                || $birthDate > new \DateTimeImmutable('today')
+            ) {
+                $errors['data_nascimento'] = 'Indique uma data de nascimento válida.';
+            }
+        }
+        if (
+            $values['sexo'] !== ''
+            && !in_array($values['sexo'], self::STUDENT_SEXES, true)
+        ) {
+            $errors['sexo'] = 'Seleccione uma opção válida.';
+        }
+
+        $database = Database::connect();
+        $identityHash = null;
+        if ($values['bi'] !== '' && !isset($errors['bi'])) {
+            $identityHash = StudentIdentity::hash($values['bi']);
+            if (StudentIdentity::exists($database, $identityHash)) {
+                $errors['bi'] = 'Já existe um aluno registado com este BI.';
+            }
+        }
+        if ($errors !== []) {
+            $this->renderSchoolStudents($user, $values, $errors);
+            return;
+        }
+
+        $schoolId = (int) $user['escola_id'];
+        $parameters = [
+            'nome_completo' => $values['nome_completo'],
+            'data_nascimento' => $values['data_nascimento'],
+            'naturalidade' => $values['naturalidade'],
+            'sexo' => $values['sexo'],
+            'bi_cifrado' => StudentIdentity::encrypt($values['bi']),
+            'bi_hash' => $identityHash,
+            'nome_pai' => $values['nome_pai'] === '' ? null : $values['nome_pai'],
+            'nome_mae' => $values['nome_mae'] === '' ? null : $values['nome_mae'],
+            'contacto' => $values['contacto'] === '' ? null : $values['contacto'],
+            'endereco' => $values['endereco'] === '' ? null : $values['endereco']
+        ];
+        $inserted = false;
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $database->beginTransaction();
+            try {
+                $schoolStatement = $database->prepare(
+                    "SELECT id FROM escolas
+                     WHERE id = :id AND estado = 'activa'
+                     FOR UPDATE"
+                );
+                $schoolStatement->execute(['id' => $schoolId]);
+                if ($schoolStatement->fetchColumn() === false) {
+                    $database->rollBack();
+                    $this->setFlash(
+                        'danger',
+                        'A escola está inactiva e não pode registar alunos.'
+                    );
+                    $this->redirect('/escola/alunos');
+                }
+
+                $studentCode = StudentIdentity::generateCode();
+                $insert = $database->prepare(
+                    "INSERT INTO alunos
+                        (codigo_central, nome_completo, data_nascimento,
+                         naturalidade, sexo, bi_cifrado, bi_hash, nome_pai,
+                         nome_mae, contacto, endereco, estado)
+                     VALUES
+                        (:codigo_central, :nome_completo, :data_nascimento,
+                         :naturalidade, :sexo, :bi_cifrado, :bi_hash, :nome_pai,
+                         :nome_mae, :contacto, :endereco, 'activo')"
+                );
+                $insert->execute(array_merge($parameters, [
+                    'codigo_central' => $studentCode
+                ]));
+                $studentId = (int) $database->lastInsertId();
+                StudentIdentity::associateWithSchool(
+                    $database,
+                    $studentId,
+                    $schoolId
+                );
+                $database->commit();
+                $inserted = true;
+                break;
+            } catch (\PDOException $exception) {
+                if ($database->inTransaction()) {
+                    $database->rollBack();
+                }
+                if ((int) ($exception->errorInfo[1] ?? 0) !== 1062) {
+                    throw $exception;
+                }
+                if (StudentIdentity::exists($database, (string) $identityHash)) {
+                    $this->renderSchoolStudents($user, $values, [
+                        'bi' => 'Já existe um aluno registado com este BI.'
+                    ]);
+                    return;
+                }
+            } catch (\Throwable $exception) {
+                if ($database->inTransaction()) {
+                    $database->rollBack();
+                }
+                throw $exception;
+            }
+        }
+        if (!$inserted) {
+            $this->renderSchoolStudents($user, $values, [
+                'form' => 'Não foi possível gerar um código único para o aluno. Tente novamente.'
+            ]);
+            return;
+        }
+
+        $this->setFlash('success', 'Aluno registado e associado à sua escola.');
+        $this->redirect('/escola/alunos');
+    }
+
+    public function enrollments(): void
+    {
+        $user = $this->requireSchoolUser();
+        $database = Database::connect();
+        $schoolId = (int) $user['escola_id'];
+        $year = $this->activeAcademicYear($database);
+        $classes = $this->schoolEnrollmentClasses($database, $user['escola_tipo']);
+        $students = $year === null
+            ? []
+            : $this->schoolStudentsAvailableForEnrollment(
+                $database,
+                $schoolId,
+                (int) $year['id']
+            );
+        $enrollments = $this->schoolEnrollmentHistory($database, $schoolId);
+        $selectedStudent = $this->queryId('aluno_id');
+
+        $this->renderSchoolPage(
+            $user,
+            'Matrículas',
+            'school-enrollment',
+            'school/enrollments',
+            [
+                'year' => $year,
+                'classes' => $classes,
+                'students' => $students,
+                'enrollments' => $enrollments,
+                'selectedStudentId' => $selectedStudent === false ? null : $selectedStudent,
+                'shiftOptions' => [
+                    'Manha' => 'Manhã',
+                    'Tarde' => 'Tarde',
+                    'Noite' => 'Noite'
+                ]
+            ]
+        );
+    }
+
+    public function saveEnrollment(): void
+    {
+        $user = $this->requireSchoolUser();
+        if (!$this->hasValidCsrfToken()) {
+            return;
+        }
+
+        $studentId = $this->postedId('aluno_id');
+        $classId = $this->postedId('classe_id');
+        $shift = $this->postedString('turno');
+        $validShifts = ['Manha', 'Tarde', 'Noite'];
+        if (
+            $studentId === false
+            || $classId === false
+            || !in_array($shift, $validShifts, true)
+        ) {
+            $this->setFlash('danger', 'Seleccione um aluno, uma classe e um turno válidos.');
+            $this->redirect('/escola/matriculas');
+        }
+
+        $database = Database::connect();
+        $schoolId = (int) $user['escola_id'];
+        $database->beginTransaction();
+        try {
+            $schoolQuery = $database->prepare(
+                "SELECT id, tipo FROM escolas
+                 WHERE id = :id AND estado = 'activa'
+                 FOR UPDATE"
+            );
+            $schoolQuery->execute(['id' => $schoolId]);
+            $school = $schoolQuery->fetch();
+            if (!$school) {
+                throw new \DomainException(
+                    'A escola está inactiva e não pode registar matrículas.'
+                );
+            }
+
+            $yearQuery = $database->query(
+                "SELECT id, ano FROM anos_lectivos
+                 WHERE estado = 'activo'
+                 ORDER BY ano DESC, id DESC
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $year = $yearQuery->fetch();
+            if (!$year) {
+                throw new \DomainException(
+                    'Não existe um ano lectivo activo para registar matrículas.'
+                );
+            }
+
+            $studentQuery = $database->prepare(
+                "SELECT a.id, a.nome_completo, ae.id AS aluno_escola_id
+                 FROM alunos a
+                 INNER JOIN aluno_escolas ae
+                    ON ae.aluno_id = a.id
+                   AND ae.escola_id = :escola_id
+                   AND ae.estado = 'activo'
+                 WHERE a.id = :aluno_id
+                   AND a.estado = 'activo'
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $studentQuery->execute([
+                'escola_id' => $schoolId,
+                'aluno_id' => $studentId
+            ]);
+            $student = $studentQuery->fetch();
+            if (!$student) {
+                throw new \DomainException(
+                    'O aluno seleccionado não está activo e associado a esta escola.'
+                );
+            }
+
+            $classQuery = $database->prepare(
+                "SELECT c.id, ne.codigo AS nivel_codigo
+                 FROM classes c
+                 INNER JOIN niveis_ensino ne ON ne.id = c.nivel_ensino_id
+                 WHERE c.id = :id AND c.estado = 'activa'
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $classQuery->execute(['id' => $classId]);
+            $class = $classQuery->fetch();
+            $expectedLevel = match ($school['tipo']) {
+                'Primaria' => 'PRI',
+                'Secundaria' => 'SEC',
+                default => ''
+            };
+            if (!$class || $class['nivel_codigo'] !== $expectedLevel) {
+                throw new \DomainException(
+                    'Seleccione uma classe activa compatível com o nível da sua escola.'
+                );
+            }
+
+            $existingEnrollment = $database->prepare(
+                "SELECT id FROM matriculas
+                 WHERE aluno_escola_id = :aluno_escola_id
+                   AND escola_id = :escola_id
+                   AND ano_lectivo_id = :ano_id
+                   AND estado = 'activa'
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $existingEnrollment->execute([
+                'aluno_escola_id' => $student['aluno_escola_id'],
+                'escola_id' => $schoolId,
+                'ano_id' => $year['id']
+            ]);
+            if ($existingEnrollment->fetchColumn() !== false) {
+                throw new \DomainException(
+                    'Este aluno já tem uma matrícula activa neste ano lectivo.'
+                );
+            }
+
+            $classroom = EnrollmentPlacement::findOrCreateClassroom(
+                $database,
+                $schoolId,
+                (int) $class['id'],
+                (int) $year['id'],
+                $shift
+            );
+            $processNumber = EnrollmentPlacement::nextProcessNumber(
+                $database,
+                $schoolId,
+                (int) $year['id']
+            );
+            $insert = $database->prepare(
+                "INSERT INTO matriculas
+                    (aluno_escola_id, escola_id, classe_id, turma_id,
+                     ano_lectivo_id, numero_processo, data_matricula, estado)
+                 VALUES
+                    (:aluno_escola_id, :escola_id, :classe_id, :turma_id,
+                     :ano_id, :numero_processo, CURRENT_DATE, 'activa')"
+            );
+            $insert->execute([
+                'aluno_escola_id' => $student['aluno_escola_id'],
+                'escola_id' => $schoolId,
+                'classe_id' => $class['id'],
+                'turma_id' => $classroom['id'],
+                'ano_id' => $year['id'],
+                'numero_processo' => $processNumber
+            ]);
+            $database->commit();
+        } catch (\DomainException $exception) {
+            if ($database->inTransaction()) {
+                $database->rollBack();
+            }
+            $this->setFlash('warning', $exception->getMessage());
+            $this->redirect('/escola/matriculas');
+        } catch (\PDOException $exception) {
+            if ($database->inTransaction()) {
+                $database->rollBack();
+            }
+            if ((int) ($exception->errorInfo[1] ?? 0) !== 1062) {
+                throw $exception;
+            }
+            $this->setFlash(
+                'danger',
+                'Não foi possível criar a matrícula; confirme se o aluno já foi matriculado.'
+            );
+            $this->redirect('/escola/matriculas');
+        } catch (\Throwable $exception) {
+            if ($database->inTransaction()) {
+                $database->rollBack();
+            }
+            throw $exception;
+        }
+
+        $this->setFlash(
+            'success',
+            'Matrícula criada para ' . $student['nome_completo']
+                . ' na turma ' . $classroom['identificacao']
+                . ', com o número de processo ' . $processNumber . '.'
+        );
+        $this->redirect('/escola/matriculas');
+    }
+
     public function grades(): void
     {
         $user = $this->requireSchoolUser();
         $database = Database::connect();
-        $year = $this->activeAcademicYear($database);
+        $year = $this->reportAcademicYear($database, (int) $user['escola_id']);
         $turmas = $year === null
             ? []
             : $this->schoolTurmasForYear(
@@ -434,6 +822,8 @@ class SchoolController extends Controller
                     'actualizado_por' => (int) $user['id']
                 ]));
             }
+            $yearClosed = $quarter === 3
+                && AcademicYearCompletion::closeIfComplete($database, $yearId);
             $database->commit();
         } catch (\Throwable $exception) {
             if ($database->inTransaction()) {
@@ -442,7 +832,12 @@ class SchoolController extends Controller
             throw $exception;
         }
 
-        $this->setFlash('success', 'Notas guardadas com sucesso.');
+        $this->setFlash(
+            'success',
+            $yearClosed
+                ? 'Notas guardadas. Todas as notas do 3.º trimestre foram lançadas e o ano lectivo foi encerrado automaticamente.'
+                : 'Notas guardadas com sucesso.'
+        );
         $this->redirectToGrades([
             'turma_id' => $turmaId,
             'disciplina_id' => $disciplineId
@@ -453,7 +848,7 @@ class SchoolController extends Controller
     {
         $user = $this->requireSchoolUser();
         $database = Database::connect();
-        $year = $this->activeAcademicYear($database);
+        $year = $this->reportAcademicYear($database, (int) $user['escola_id']);
         $classId = $this->queryId('classe_id');
         $turmaId = $this->queryId('turma_id');
         $disciplineId = $this->queryId('disciplina_id');
@@ -557,7 +952,7 @@ class SchoolController extends Controller
     {
         $user = $this->requireSchoolUser();
         $database = Database::connect();
-        $year = $this->activeAcademicYear($database);
+        $year = $this->reportAcademicYear($database, (int) $user['escola_id']);
         $turmaId = $this->queryId('turma_id');
         $quarter = $this->queryId('trimestre');
         if (
@@ -731,7 +1126,7 @@ class SchoolController extends Controller
     {
         $user = $this->requireSchoolUser();
         $database = Database::connect();
-        $year = $this->activeAcademicYear($database);
+        $year = $this->reportAcademicYear($database, (int) $user['escola_id']);
         $turmaId = $this->queryId('turma_id');
         if ($year === null || $turmaId === false) {
             http_response_code(400);
@@ -925,25 +1320,38 @@ class SchoolController extends Controller
         $user = $this->requireSchoolUser();
         $database = Database::connect();
         $schoolId = (int) $user['escola_id'];
-
-        $students = $database->prepare(
-            'SELECT ae.id AS aluno_escola_id, ae.estado AS associacao_estado,
-                    a.nome_completo, a.codigo_central
-             FROM aluno_escolas ae
-             INNER JOIN alunos a ON a.id = ae.aluno_id
-             WHERE ae.escola_id = :escola_id
-             ORDER BY a.nome_completo, ae.id'
-        );
-        $students->execute(['escola_id' => $schoolId]);
+        $eligibleEnrollments = $this->eligibleDocumentEnrollments($database, $schoolId);
+        $classes = [];
+        foreach ($eligibleEnrollments as $enrollment) {
+            $classId = (int) $enrollment['classe_id'];
+            if (!isset($classes[$classId])) {
+                $classes[$classId] = [
+                    'id' => $classId,
+                    'nome' => $enrollment['classe_nome'],
+                    'tem_exame' => (int) $enrollment['tem_exame']
+                ];
+            }
+        }
 
         $requests = $database->prepare(
             'SELECT pd.id, pd.codigo, pd.tipo_documento, pd.motivo, pd.estado,
                     pd.resposta_admin, pd.codigo_validacao, pd.emitido_em,
                     pd.solicitado_em, pd.concluido_em,
-                    a.nome_completo, a.codigo_central
+                    a.nome_completo, a.codigo_central,
+                    c.nome AS classe_nome, t.identificacao AS turma_nome,
+                    al.ano AS ano_lectivo
              FROM pedidos_documentos pd
-             INNER JOIN aluno_escolas ae ON ae.id = pd.aluno_escola_id
+             INNER JOIN aluno_escolas ae
+                ON ae.id = pd.aluno_escola_id
+               AND ae.escola_id = pd.escola_id
              INNER JOIN alunos a ON a.id = ae.aluno_id
+             LEFT JOIN matriculas m
+                ON m.id = pd.matricula_id
+               AND m.escola_id = pd.escola_id
+               AND m.aluno_escola_id = pd.aluno_escola_id
+             LEFT JOIN classes c ON c.id = m.classe_id
+             LEFT JOIN turmas t ON t.id = m.turma_id
+             LEFT JOIN anos_lectivos al ON al.id = m.ano_lectivo_id
              WHERE pd.escola_id = :escola_id
              ORDER BY pd.solicitado_em DESC, pd.id DESC'
         );
@@ -955,11 +1363,13 @@ class SchoolController extends Controller
             'school-documents',
             'school/document-requests',
             [
-                'students' => $students->fetchAll(),
+                'eligibleEnrollments' => $eligibleEnrollments,
+                'classes' => array_values($classes),
                 'requests' => $requests->fetchAll(),
                 'documentTypes' => [
                     'certificado' => 'Certificado',
-                    'declaracao' => 'Declaração'
+                    'declaracao' => 'Declaração anual',
+                    'declaracao_notas' => 'Declaração de notas'
                 ],
                 'statusLabels' => $this->documentStatusLabels()
             ]
@@ -981,7 +1391,11 @@ class SchoolController extends Controller
                     pd.resposta_admin, pd.codigo_validacao, pd.solicitado_em,
                     pd.emitido_em, pd.concluido_em,
                     a.nome_completo AS aluno_nome, a.codigo_central,
-                    e.nome AS escola_nome, e.distrito AS escola_distrito,
+                    c.nome AS classe_nome, t.identificacao AS turma_nome,
+                    al.ano AS ano_lectivo,
+                    e.codigo AS escola_codigo, e.nome AS escola_nome,
+                    e.nome_director AS escola_director, e.localidade AS escola_localidade,
+                    e.endereco AS escola_endereco, e.distrito AS escola_distrito,
                     e.provincia AS escola_provincia
              FROM pedidos_documentos pd
              INNER JOIN aluno_escolas ae
@@ -989,6 +1403,17 @@ class SchoolController extends Controller
                AND ae.escola_id = pd.escola_id
              INNER JOIN alunos a ON a.id = ae.aluno_id
              INNER JOIN escolas e ON e.id = pd.escola_id
+             LEFT JOIN matriculas m
+                ON m.id = pd.matricula_id
+               AND m.escola_id = pd.escola_id
+               AND m.aluno_escola_id = pd.aluno_escola_id
+             LEFT JOIN classes c ON c.id = m.classe_id
+             LEFT JOIN turmas t
+                ON t.id = m.turma_id
+               AND t.escola_id = m.escola_id
+               AND t.ano_lectivo_id = m.ano_lectivo_id
+               AND t.classe_id = m.classe_id
+             LEFT JOIN anos_lectivos al ON al.id = m.ano_lectivo_id
              WHERE pd.id = :pedido_id
                AND pd.escola_id = :escola_id
              LIMIT 1'
@@ -1016,12 +1441,46 @@ class SchoolController extends Controller
             'concluido_em' => $request['concluido_em'],
             'aluno_nome' => $request['aluno_nome'],
             'codigo_central' => $request['codigo_central'],
+            'classe_nome' => $request['classe_nome'],
+            'turma_nome' => $request['turma_nome'],
+            'ano_lectivo' => $request['ano_lectivo'],
+            'escola_codigo' => $request['escola_codigo'],
             'escola_nome' => $request['escola_nome'],
+            'escola_director' => $request['escola_director'],
+            'escola_localidade' => $request['escola_localidade'],
+            'escola_endereco' => $request['escola_endereco'],
             'escola_distrito' => $request['escola_distrito'],
             'escola_provincia' => $request['escola_provincia'],
             'verification_path' => $this->basePath() . '/validar-documento'
         ]);
         $this->sendPdf($pdf, 'recibo-pedido-' . (int) $request['id'] . '.pdf', true);
+    }
+
+    public function issueDocumentRequest(): void
+    {
+        $user = $this->requireSchoolUser();
+        if (!$this->hasValidCsrfToken()) {
+            return;
+        }
+
+        $requestId = $this->postedId('pedido_id');
+        if ($requestId === false) {
+            $this->setFlash('danger', 'Seleccione um pedido válido para emitir.');
+            $this->redirect('/escola/pedidos-documentos');
+        }
+
+        try {
+            $issued = (new DocumentRequestIssuer())->issue(
+                Database::connect(),
+                $requestId,
+                (int) $user['escola_id']
+            );
+        } catch (\DomainException $exception) {
+            $this->setFlash('danger', $exception->getMessage());
+            $this->redirect('/escola/pedidos-documentos');
+        }
+
+        $this->sendPdf($issued['pdf'], $issued['filename'], true);
     }
 
     public function saveDocumentRequest(): void
@@ -1031,48 +1490,58 @@ class SchoolController extends Controller
             return;
         }
 
-        $studentSchoolId = $this->postedId('aluno_escola_id');
-        $type = $this->postedString('tipo_documento');
+        $classId = $this->postedId('classe_id');
+        $classroomId = $this->postedId('turma_id');
+        $enrollmentId = $this->postedId('matricula_id');
         $reason = $this->postedString('motivo');
         $reasonLength = preg_match_all('/./us', $reason);
         if (
-            $studentSchoolId === false
-            || !in_array($type, ['certificado', 'declaracao'], true)
+            $classId === false
+            || $classroomId === false
+            || $enrollmentId === false
             || $reasonLength === false
             || $reasonLength < 5
             || $reasonLength > 500
         ) {
-            $this->setFlash('danger', 'Seleccione o aluno, o tipo de documento e indique o motivo (5 a 500 caracteres).');
+            $this->setFlash('danger', 'Seleccione a classe, a turma e o aluno elegível e indique o motivo (5 a 500 caracteres).');
             $this->redirect('/escola/pedidos-documentos');
         }
 
         $database = Database::connect();
-        $association = $database->prepare(
-            'SELECT id FROM aluno_escolas
-             WHERE id = :id AND escola_id = :escola_id
-             LIMIT 1'
+        $eligibleEnrollments = $this->eligibleDocumentEnrollments(
+            $database,
+            (int) $user['escola_id'],
+            $enrollmentId
         );
-        $association->execute([
-            'id' => $studentSchoolId,
-            'escola_id' => (int) $user['escola_id']
-        ]);
-        if ($association->fetchColumn() === false) {
-            $this->setFlash('danger', 'O aluno seleccionado não pertence a esta escola.');
+        $enrollment = $eligibleEnrollments[0] ?? null;
+        if (
+            $enrollment === null
+            || (int) $enrollment['classe_id'] !== $classId
+            || (int) $enrollment['turma_id'] !== $classroomId
+        ) {
+            $this->setFlash(
+                'danger',
+                'O aluno não tem um ano lectivo elegível com notas concluídas nesta classe e turma.'
+            );
             $this->redirect('/escola/pedidos-documentos');
         }
+        $type = $enrollment['tipo_documento'];
 
         $saveRequest = $database->prepare(
             'INSERT INTO pedidos_documentos
-                (codigo, escola_id, aluno_escola_id, tipo_documento, motivo, solicitado_por)
+                (codigo, escola_id, aluno_escola_id, matricula_id,
+                 tipo_documento, motivo, solicitado_por)
              VALUES
-                (:codigo, :escola_id, :aluno_escola_id, :tipo_documento, :motivo, :solicitado_por)'
+                (:codigo, :escola_id, :aluno_escola_id, :matricula_id,
+                 :tipo_documento, :motivo, :solicitado_por)'
         );
         for ($attempt = 0; $attempt < 5; $attempt++) {
             try {
                 $saveRequest->execute([
                     'codigo' => 'SGECE-PED-' . strtoupper(bin2hex(random_bytes(6))),
                     'escola_id' => (int) $user['escola_id'],
-                    'aluno_escola_id' => $studentSchoolId,
+                    'aluno_escola_id' => (int) $enrollment['aluno_escola_id'],
+                    'matricula_id' => $enrollmentId,
                     'tipo_documento' => $type,
                     'motivo' => $reason,
                     'solicitado_por' => (int) $user['id']
@@ -1085,6 +1554,122 @@ class SchoolController extends Controller
                 }
             }
         }
+    }
+
+    private function eligibleDocumentEnrollments(
+        \PDO $database,
+        int $schoolId,
+        ?int $enrollmentId = null
+    ): array {
+        $enrollmentCondition = $enrollmentId === null
+            ? ''
+            : ' AND m.id = :matricula_id';
+        $parameters = ['escola_id' => $schoolId];
+        if ($enrollmentId !== null) {
+            $parameters['matricula_id'] = $enrollmentId;
+        }
+
+        $completeQuarterCounts = [];
+        for ($quarter = 1; $quarter <= 3; $quarter++) {
+            $completeQuarterCounts[$quarter] = "COUNT(DISTINCT CASE
+                WHEN n.trimestre = {$quarter}
+                 AND n.acs1 IS NOT NULL
+                 AND n.acs2 IS NOT NULL
+                 AND n.avaliacao_provincial IS NOT NULL
+                THEN d.id
+            END)";
+        }
+        $quarterAverage = 'COALESCE(
+            n.nota,
+            (n.acs1 + n.acs2 + n.avaliacao_provincial) / 3
+        )';
+        $allQuartersComplete = implode(
+            ' AND ',
+            array_map(
+                static fn(string $count): string => $count . ' = COUNT(DISTINCT d.id)',
+                $completeQuarterCounts
+            )
+        );
+        $anyQuarterComplete = implode(
+            ' OR ',
+            array_map(
+                static fn(string $count): string => $count . ' = COUNT(DISTINCT d.id)',
+                $completeQuarterCounts
+            )
+        );
+        $statement = $database->prepare(
+            'SELECT m.id AS matricula_id, m.aluno_escola_id,
+                    m.classe_id, m.turma_id, m.ano_lectivo_id,
+                    c.nome AS classe_nome, c.ordem AS classe_ordem,
+                    c.tem_exame, t.identificacao AS turma_nome,
+                    al.ano, al.estado AS ano_estado,
+                    COUNT(DISTINCT d.id) AS total_disciplinas,
+                    ' . $completeQuarterCounts[1] . ' AS trimestre1_disciplinas_completas,
+                    ' . $completeQuarterCounts[2] . ' AS trimestre2_disciplinas_completas,
+                    ' . $completeQuarterCounts[3] . ' AS trimestre3_disciplinas_completas,
+                    a.nome_completo, a.codigo_central,
+                    ROUND(AVG(' . $quarterAverage . '), 2) AS media_final
+             FROM matriculas m
+             INNER JOIN anos_lectivos al ON al.id = m.ano_lectivo_id
+             INNER JOIN classes c ON c.id = m.classe_id
+             INNER JOIN turmas t
+                ON t.id = m.turma_id
+               AND t.escola_id = m.escola_id
+               AND t.ano_lectivo_id = m.ano_lectivo_id
+               AND t.classe_id = m.classe_id
+             INNER JOIN aluno_escolas ae
+                ON ae.id = m.aluno_escola_id
+               AND ae.escola_id = m.escola_id
+             INNER JOIN alunos a ON a.id = ae.aluno_id
+             INNER JOIN classes_disciplinas cd ON cd.classe_id = m.classe_id
+             INNER JOIN disciplinas d
+                ON d.id = cd.disciplina_id
+               AND d.estado = \'activa\'
+             LEFT JOIN notas_trimestrais n
+                ON n.matricula_id = m.id
+               AND n.disciplina_id = d.id
+               AND n.trimestre BETWEEN 1 AND 3
+             WHERE m.escola_id = :escola_id
+               AND al.estado IN (\'activo\', \'encerrado\')' . $enrollmentCondition . '
+             GROUP BY m.id, m.aluno_escola_id, m.classe_id, m.turma_id,
+                      m.ano_lectivo_id, c.nome, c.ordem, c.tem_exame,
+                      t.identificacao, al.ano, al.estado,
+                      a.nome_completo, a.codigo_central
+             HAVING COUNT(DISTINCT d.id) > 0
+                AND (
+                    (al.estado = \'encerrado\'
+                     AND ' . $allQuartersComplete . '
+                     AND ROUND(AVG(' . $quarterAverage . '), 2) >= ' . self::PASSING_GRADE . ')
+                    OR
+                    (al.estado = \'activo\'
+                     AND (' . $anyQuarterComplete . '))
+                )
+             ORDER BY c.ordem, c.nome, al.ano DESC,
+                      CHAR_LENGTH(t.identificacao), t.identificacao,
+                      a.nome_completo, a.codigo_central'
+        );
+        $statement->execute($parameters);
+
+        $enrollments = $statement->fetchAll();
+        foreach ($enrollments as &$enrollment) {
+            $enrollment['tipo_documento'] = $enrollment['ano_estado'] === 'activo'
+                ? 'declaracao_notas'
+                : ((int) $enrollment['tem_exame'] === 1
+                    ? 'certificado'
+                    : 'declaracao');
+            $enrollment['trimestres_concluidos'] = [];
+            for ($quarter = 1; $quarter <= 3; $quarter++) {
+                if (
+                    (int) $enrollment['trimestre' . $quarter . '_disciplinas_completas']
+                    === (int) $enrollment['total_disciplinas']
+                ) {
+                    $enrollment['trimestres_concluidos'][] = $quarter;
+                }
+            }
+        }
+        unset($enrollment);
+
+        return $enrollments;
     }
 
     private function requireSchoolUser(): array
@@ -1185,6 +1770,128 @@ class SchoolController extends Controller
         return (int) $statement->fetchColumn();
     }
 
+    private function renderSchoolStudents(
+        array $user,
+        array $formValues = [],
+        array $errors = []
+    ): void {
+        $database = Database::connect();
+        $statement = $database->prepare(
+            "SELECT a.id, a.nome_completo, a.codigo_central, a.data_nascimento,
+                    a.naturalidade, a.estado
+             FROM aluno_escolas ae
+             INNER JOIN alunos a ON a.id = ae.aluno_id
+             WHERE ae.escola_id = :escola_id
+               AND ae.estado = 'activo'
+             ORDER BY a.nome_completo, a.id
+             LIMIT 100"
+        );
+        $statement->execute(['escola_id' => (int) $user['escola_id']]);
+        $formValues = array_merge([
+            'nome_completo' => '',
+            'data_nascimento' => '',
+            'naturalidade' => '',
+            'sexo' => '',
+            'bi' => '',
+            'nome_pai' => '',
+            'nome_mae' => '',
+            'contacto' => '',
+            'endereco' => ''
+        ], $formValues);
+
+        $this->renderSchoolPage(
+            $user,
+            'Alunos',
+            'school-students',
+            'school/students',
+            [
+                'students' => $statement->fetchAll(),
+                'formValues' => $formValues,
+                'errors' => $errors,
+                'sexOptions' => self::STUDENT_SEXES
+            ]
+        );
+    }
+
+    private function schoolEnrollmentClasses(
+        \PDO $database,
+        string $schoolType
+    ): array {
+        $levelCode = match ($schoolType) {
+            'Primaria' => 'PRI',
+            'Secundaria' => 'SEC',
+            default => ''
+        };
+        if ($levelCode === '') {
+            return [];
+        }
+
+        $statement = $database->prepare(
+            "SELECT c.id, c.nome
+             FROM classes c
+             INNER JOIN niveis_ensino ne ON ne.id = c.nivel_ensino_id
+             WHERE c.estado = 'activa'
+               AND ne.codigo = :nivel_codigo
+             ORDER BY c.ordem, c.nome"
+        );
+        $statement->execute(['nivel_codigo' => $levelCode]);
+
+        return $statement->fetchAll();
+    }
+
+    private function schoolStudentsAvailableForEnrollment(
+        \PDO $database,
+        int $schoolId,
+        int $yearId
+    ): array {
+        $statement = $database->prepare(
+            "SELECT a.id, a.nome_completo, a.codigo_central
+             FROM alunos a
+             INNER JOIN aluno_escolas ae
+                ON ae.aluno_id = a.id
+               AND ae.escola_id = :escola_id
+               AND ae.estado = 'activo'
+             WHERE a.estado = 'activo'
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM matriculas m
+                   WHERE m.aluno_escola_id = ae.id
+                     AND m.ano_lectivo_id = :ano_id
+                     AND m.estado = 'activa'
+               )
+             ORDER BY a.nome_completo, a.codigo_central"
+        );
+        $statement->execute([
+            'escola_id' => $schoolId,
+            'ano_id' => $yearId
+        ]);
+
+        return $statement->fetchAll();
+    }
+
+    private function schoolEnrollmentHistory(
+        \PDO $database,
+        int $schoolId
+    ): array {
+        $statement = $database->prepare(
+            'SELECT m.id, m.numero_processo, m.data_matricula, m.estado,
+                    a.nome_completo, a.codigo_central, c.nome AS classe_nome,
+                    t.identificacao AS turma_nome, t.turno, al.ano
+             FROM matriculas m
+             INNER JOIN aluno_escolas ae ON ae.id = m.aluno_escola_id
+             INNER JOIN alunos a ON a.id = ae.aluno_id
+             INNER JOIN classes c ON c.id = m.classe_id
+             INNER JOIN turmas t ON t.id = m.turma_id
+             INNER JOIN anos_lectivos al ON al.id = m.ano_lectivo_id
+             WHERE m.escola_id = :escola_id
+             ORDER BY m.id DESC
+             LIMIT 50'
+        );
+        $statement->execute(['escola_id' => $schoolId]);
+
+        return $statement->fetchAll();
+    }
+
     private function activeAcademicYear(\PDO $database): ?array
     {
         $statement = $database->query(
@@ -1195,6 +1902,28 @@ class SchoolController extends Controller
              LIMIT 1"
         );
         $year = $statement->fetch();
+        return $year === false ? null : $year;
+    }
+
+    private function reportAcademicYear(\PDO $database, int $schoolId): ?array
+    {
+        $activeYear = $this->activeAcademicYear($database);
+        if ($activeYear !== null) {
+            return $activeYear;
+        }
+
+        $statement = $database->prepare(
+            "SELECT al.id, al.ano, al.estado
+             FROM anos_lectivos al
+             INNER JOIN matriculas m ON m.ano_lectivo_id = al.id
+             WHERE m.escola_id = :escola_id
+               AND al.estado = 'encerrado'
+             ORDER BY al.ano DESC, al.id DESC
+             LIMIT 1"
+        );
+        $statement->execute(['escola_id' => $schoolId]);
+        $year = $statement->fetch();
+
         return $year === false ? null : $year;
     }
 
@@ -1757,6 +2486,7 @@ class SchoolController extends Controller
         return [
             'pendente' => 'Pendente',
             'em_analise' => 'Em análise',
+            'aprovado' => 'Aprovado para emissão',
             'emitido' => 'Emitido',
             'rejeitado' => 'Rejeitado'
         ];

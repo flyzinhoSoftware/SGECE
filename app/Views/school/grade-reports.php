@@ -10,12 +10,17 @@ $escape = static function ($value): string {
             <h1>Pautas existentes</h1>
             <p>
                 Consulte as pautas agrupadas por classe e filtre por turma, disciplina e período.
-                Ano lectivo activo: <?= $year === null ? 'indisponível' : (int) $year['ano'] ?>.
+                Ano lectivo consultado:
+                <?= $year === null
+                    ? 'indisponível'
+                    : (int) $year['ano'] . ' (' . ($year['estado'] === 'encerrado' ? 'encerrado' : 'activo') . ')' ?>.
             </p>
         </div>
-        <a class="btn btn-primary" href="<?= $escape($basePath) ?>/escola/notas/lancar">
-            <i class="bi bi-plus-circle me-1"></i>Lançar pauta
-        </a>
+        <?php if ($year !== null && $year['estado'] === 'activo'): ?>
+            <a class="btn btn-primary" href="<?= $escape($basePath) ?>/escola/notas/lancar">
+                <i class="bi bi-plus-circle me-1"></i>Lançar pauta
+            </a>
+        <?php endif; ?>
     </div>
 
     <?php if ($flash !== null): ?>
@@ -26,7 +31,7 @@ $escape = static function ($value): string {
 
     <?php if ($year === null): ?>
         <div class="alert alert-warning" role="status">
-            Não existe um ano lectivo activo. Contacte o administrador.
+            Não existe um ano lectivo com pautas disponíveis para esta escola.
         </div>
     <?php else: ?>
         <form method="get" action="<?= $escape($basePath) ?>/escola/notas"
