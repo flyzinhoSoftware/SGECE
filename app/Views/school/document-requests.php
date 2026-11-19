@@ -169,7 +169,7 @@ $statusClasses = [
                                                 Código de validação:
                                                 <code><?= $escape($request['codigo_validacao']) ?></code>
                                             </div>
-                                            <a href="<?= $escape($basePath) ?>/portal/documento?codigo=<?= $escape(urlencode($request['codigo_validacao'])) ?>">
+                                            <a href="<?= $escape($basePath) ?>/escola/pedidos-documentos/documento.pdf?codigo=<?= $escape(urlencode($request['codigo_validacao'])) ?>">
                                                 <i class="bi bi-download me-1"></i>Descarregar PDF
                                             </a>
                                             <a href="<?= $escape($basePath) ?>/validar-documento?codigo=<?= $escape(urlencode($request['codigo_validacao'])) ?>">

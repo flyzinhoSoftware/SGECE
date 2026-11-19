@@ -25,6 +25,8 @@ para pesquisar, filtrar, registar e editar escolas. Uma escola pode ser
 activada ou desactivada sem apagar os registos académicos associados. Os
 formulários usam token CSRF e consultas parametrizadas.
 O nome do director é obrigatório no formulário da escola e aparece no certificado.
+O nome do chefe da secretaria também pode ser registado e aparece na área de
+assinatura dos documentos emitidos quando estiver preenchido.
 O código é preenchido em tempo real com as iniciais do nome, a sigla do nível
 (`PRI`/`SEC`) e um sufixo hexadecimal aleatório de 64 bits. O índice `UNIQUE`
 da base de dados e as novas tentativas do backend impedem códigos repetidos.
@@ -157,10 +159,12 @@ encaminha pedidos para análise e aprova-os com uma nota visível no painel da e
 Após aprovação, a escola ou o administrador pode emitir o documento. Certificados
 e declarações anuais incluem a declaração do director, a naturalidade, a filiação,
 a data de nascimento, a classe, o turno, a turma, o ano lectivo, as médias anuais
-por disciplina e a média final geral; declarações trimestrais incluem as notas dos
-trimestres completos. Para emitir um
-certificado, a naturalidade do aluno e o director e turno da turma têm de estar
-registados. O painel principal mostra a quantidade de pedidos
+por disciplina e a média final geral; a declaração anual apresenta apenas as
+médias anuais, enquanto declarações trimestrais incluem as notas dos trimestres
+completos. Certificados e declarações anuais são compostos para caber numa página.
+O nome do chefe da secretaria pode ser registado nos dados da escola e aparece
+na área de assinatura do documento quando preenchido. Para emitir um certificado,
+a naturalidade do aluno e o director e turno da turma têm de estar registados. O painel principal mostra a quantidade de pedidos
 aprovados e permite abrir directamente a fila de emissão. Ao emitir, o SGECE gera
 e arquiva o PDF com o brasão da
 República de Moçambique, atribui um código de validação e disponibiliza o
@@ -170,7 +174,8 @@ público com o código do aluno e a data de nascimento.
 Em bases de dados existentes, aplique por ordem
 `database/migrations/add_school_grades_and_document_requests.sql` e
 `database/migrations/add_assessment_scores_and_issued_pdfs.sql`, depois
-`database/migrations/add_school_director_and_document_enrollment.sql` e
+`database/migrations/add_school_director_and_document_enrollment.sql`,
+`database/migrations/add_school_secretariat_head.sql` e
 `database/migrations/add_class_exam_flag.sql` antes de executar as sementes
 curriculares actualizadas. Depois de as classes existirem, execute
 `database/migrations/configure_exam_classes.sql`.

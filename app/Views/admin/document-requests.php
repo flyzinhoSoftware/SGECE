@@ -146,7 +146,7 @@ $typeLabels = [
                                         <?php endif; ?>
                                         <?php if ($request['estado'] === 'emitido' && !empty($request['codigo_validacao'])): ?>
                                             <div class="d-flex flex-column gap-1 mt-2">
-                                                <a href="<?= $escape($basePath) ?>/portal/documento?codigo=<?= $escape(urlencode($request['codigo_validacao'])) ?>">
+                                                <a href="<?= $escape($basePath) ?>/admin/pedidos-documentos/documento.pdf?codigo=<?= $escape(urlencode($request['codigo_validacao'])) ?>">
                                                     <i class="bi bi-download me-1"></i>Descarregar PDF
                                                 </a>
                                                 <a href="<?= $escape($basePath) ?>/validar-documento?codigo=<?= $escape(urlencode($request['codigo_validacao'])) ?>">

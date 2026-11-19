@@ -254,6 +254,20 @@ $paginationQuery = http_build_query(array_filter([
                             </div>
 
                             <div class="schools-field">
+                                <label for="student-bi-issue-date" class="form-label">Data de emissão do BI</label>
+                                <input
+                                    id="student-bi-issue-date"
+                                    class="form-control<?= isset($errors['data_emissao_bi']) ? ' is-invalid' : '' ?>"
+                                    type="date"
+                                    name="data_emissao_bi"
+                                    value="<?= $escape($formValues['data_emissao_bi'] ?? '') ?>"
+                                    max="<?= date('Y-m-d') ?>">
+                                <?php if (isset($errors['data_emissao_bi'])): ?>
+                                    <div class="invalid-feedback"><?= $escape($errors['data_emissao_bi']) ?></div>
+                                <?php endif; ?>
+                            </div>
+
+                            <div class="schools-field">
                                 <label for="student-father" class="form-label">Nome do pai</label>
                                 <input
                                     id="student-father"

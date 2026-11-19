@@ -89,6 +89,7 @@ class SchoolController extends Controller
         $limits = [
             'nome_completo' => 180,
             'data_nascimento' => 10,
+            'data_emissao_bi' => 10,
             'naturalidade' => 180,
             'sexo' => 20,
             'bi' => 30,
@@ -117,22 +118,44 @@ class SchoolController extends Controller
                 $errors[$required] = 'Este campo é obrigatório.';
             }
         }
+        $birthDate = null;
         if ($values['data_nascimento'] !== '' && !isset($errors['data_nascimento'])) {
-            $birthDate = \DateTimeImmutable::createFromFormat(
+            $parsedBirthDate = \DateTimeImmutable::createFromFormat(
                 '!Y-m-d',
                 $values['data_nascimento']
             );
             $dateErrors = \DateTimeImmutable::getLastErrors();
             if (
-                $birthDate === false
+                $parsedBirthDate === false
                 || ($dateErrors !== false && (
                     $dateErrors['warning_count'] > 0
                     || $dateErrors['error_count'] > 0
                 ))
-                || $birthDate->format('Y-m-d') !== $values['data_nascimento']
-                || $birthDate > new \DateTimeImmutable('today')
+                || $parsedBirthDate->format('Y-m-d') !== $values['data_nascimento']
+                || $parsedBirthDate > new \DateTimeImmutable('today')
             ) {
                 $errors['data_nascimento'] = 'Indique uma data de nascimento válida.';
+            } else {
+                $birthDate = $parsedBirthDate;
+            }
+        }
+        if ($values['data_emissao_bi'] !== '' && !isset($errors['data_emissao_bi'])) {
+            $identityIssueDate = \DateTimeImmutable::createFromFormat(
+                '!Y-m-d',
+                $values['data_emissao_bi']
+            );
+            $dateErrors = \DateTimeImmutable::getLastErrors();
+            if (
+                $identityIssueDate === false
+                || ($dateErrors !== false && (
+                    $dateErrors['warning_count'] > 0
+                    || $dateErrors['error_count'] > 0
+                ))
+                || $identityIssueDate->format('Y-m-d') !== $values['data_emissao_bi']
+                || $identityIssueDate > new \DateTimeImmutable('today')
+                || ($birthDate !== null && $identityIssueDate < $birthDate)
+            ) {
+                $errors['data_emissao_bi'] = 'Indique uma data de emissão do BI válida.';
             }
         }
         if (
@@ -159,6 +182,9 @@ class SchoolController extends Controller
         $parameters = [
             'nome_completo' => $values['nome_completo'],
             'data_nascimento' => $values['data_nascimento'],
+            'data_emissao_bi' => $values['data_emissao_bi'] === ''
+                ? null
+                : $values['data_emissao_bi'],
             'naturalidade' => $values['naturalidade'],
             'sexo' => $values['sexo'],
             'bi_cifrado' => StudentIdentity::encrypt($values['bi']),
@@ -191,11 +217,11 @@ class SchoolController extends Controller
                 $insert = $database->prepare(
                     "INSERT INTO alunos
                         (codigo_central, nome_completo, data_nascimento,
-                         naturalidade, sexo, bi_cifrado, bi_hash, nome_pai,
+                         data_emissao_bi, naturalidade, sexo, bi_cifrado, bi_hash, nome_pai,
                          nome_mae, contacto, endereco, estado)
                      VALUES
                         (:codigo_central, :nome_completo, :data_nascimento,
-                         :naturalidade, :sexo, :bi_cifrado, :bi_hash, :nome_pai,
+                         :data_emissao_bi, :naturalidade, :sexo, :bi_cifrado, :bi_hash, :nome_pai,
                          :nome_mae, :contacto, :endereco, 'activo')"
                 );
                 $insert->execute(array_merge($parameters, [
@@ -1451,9 +1477,52 @@ class SchoolController extends Controller
             'escola_endereco' => $request['escola_endereco'],
             'escola_distrito' => $request['escola_distrito'],
             'escola_provincia' => $request['escola_provincia'],
-            'verification_path' => $this->basePath() . '/validar-documento'
+            'verification_path' => $this->basePath() . '/validar-documento',
+            'portal_path' => $this->basePath() . '/'
         ]);
         $this->sendPdf($pdf, 'recibo-pedido-' . (int) $request['id'] . '.pdf', true);
+    }
+
+    public function downloadIssuedDocument(): void
+    {
+        $user = $this->requireSchoolUser();
+        $value = $_GET['codigo'] ?? '';
+        $code = is_string($value) ? strtoupper(trim($value)) : '';
+        if (preg_match('/^[A-F0-9]{32}$/', $code) !== 1) {
+            http_response_code(404);
+            echo 'Documento não encontrado.';
+            return;
+        }
+
+        $statement = Database::connect()->prepare(
+            "SELECT pd.tipo_documento, pd.documento_pdf
+             FROM pedidos_documentos pd
+             WHERE pd.codigo_validacao = :codigo
+               AND pd.escola_id = :escola_id
+               AND pd.estado = 'emitido'
+               AND pd.documento_pdf IS NOT NULL
+             LIMIT 1"
+        );
+        $statement->execute([
+            'codigo' => $code,
+            'escola_id' => (int) $user['escola_id']
+        ]);
+        $document = $statement->fetch();
+        if (!$document || !is_string($document['documento_pdf'])) {
+            http_response_code(404);
+            echo 'Documento não encontrado nesta escola.';
+            return;
+        }
+
+        $type = match ($document['tipo_documento']) {
+            'certificado' => 'certificado',
+            'declaracao_notas' => 'declaracao-notas',
+            default => 'declaracao'
+        };
+        $this->sendPdf(
+            $document['documento_pdf'],
+            'sgece-' . $type . '-' . $code . '.pdf'
+        );
     }
 
     public function issueDocumentRequest(): void
@@ -1790,6 +1859,7 @@ class SchoolController extends Controller
         $formValues = array_merge([
             'nome_completo' => '',
             'data_nascimento' => '',
+            'data_emissao_bi' => '',
             'naturalidade' => '',
             'sexo' => '',
             'bi' => '',

@@ -37,12 +37,15 @@ final class DocumentRequestIssuer
                 'SELECT pd.id, pd.codigo, pd.tipo_documento, pd.estado,
                         pd.matricula_id, pd.escola_id,
                         a.nome_completo AS aluno_nome, a.codigo_central,
-                        a.data_nascimento, a.naturalidade, a.nome_pai, a.nome_mae,
+                        a.data_nascimento, a.data_emissao_bi, a.bi_cifrado, a.sexo,
+                        a.naturalidade, a.nome_pai, a.nome_mae,
                         c.id AS classe_id, c.nome AS classe_nome, c.tem_exame,
                         t.identificacao AS turma_nome, t.turno AS turma_turno,
                         al.ano AS ano_lectivo, al.estado AS ano_estado,
                         e.codigo AS escola_codigo, e.nome AS escola_nome,
-                        e.nome_director AS escola_director, e.tipo AS escola_tipo,
+                        e.nome_director AS escola_director,
+                        e.nome_chefe_secretaria AS escola_chefe_secretaria,
+                        e.tipo AS escola_tipo,
                         e.provincia AS escola_provincia, e.distrito AS escola_distrito,
                         e.localidade AS escola_localidade, e.endereco AS escola_endereco
                  FROM pedidos_documentos pd
@@ -83,6 +86,26 @@ final class DocumentRequestIssuer
                     'O pedido não tem uma matrícula válida.'
                 );
             }
+            $hasDirector = trim((string) $request['escola_director']) !== '';
+            $hasSecretary = trim((string) $request['escola_chefe_secretaria']) !== '';
+            if ($request['tipo_documento'] === 'certificado' && !$hasDirector) {
+                throw new \DomainException(
+                    'Registe o nome do director da escola antes de emitir o certificado.'
+                );
+            }
+            if (
+                in_array(
+                    $request['tipo_documento'],
+                    ['declaracao', 'declaracao_notas'],
+                    true
+                )
+                && !$hasDirector
+                && !$hasSecretary
+            ) {
+                throw new \DomainException(
+                    'Registe o nome do director ou do chefe da secretaria antes de emitir o documento.'
+                );
+            }
 
             $isQuarterlyStatement = $request['tipo_documento'] === 'declaracao_notas';
             $annualResults = null;
@@ -118,11 +141,6 @@ final class DocumentRequestIssuer
                         'Registe a naturalidade do aluno antes de emitir o documento anual.'
                     );
                 }
-                if (trim((string) $request['escola_director']) === '') {
-                    throw new \DomainException(
-                        'Registe o nome do director da escola antes de emitir o documento anual.'
-                    );
-                }
                 if (trim((string) $request['turma_turno']) === '') {
                     throw new \DomainException(
                         'Defina o turno da turma antes de emitir o documento anual.'
@@ -142,7 +160,32 @@ final class DocumentRequestIssuer
 
             $issuedAt = date('Y-m-d H:i:s');
             $validationCode = strtoupper(bin2hex(random_bytes(16)));
+            if (in_array(
+                $request['tipo_documento'],
+                ['declaracao', 'declaracao_notas'],
+                true
+            )) {
+                $request['bi_numero'] = StudentIdentity::decrypt(
+                    (string) $request['bi_cifrado']
+                );
+            }
             $documentContent = $this->documentContent($request, $quarterResults);
+            $storedDocumentContent = $documentContent;
+            if (isset($request['bi_numero'])) {
+                $identityLabel = 'Bilhete de Identidade n.º '
+                    . $request['bi_numero'];
+                $storedDocumentContent = str_replace(
+                    $identityLabel,
+                    'Bilhete de Identidade n.º ________________',
+                    $documentContent,
+                    $replacementCount
+                );
+                if ($replacementCount !== 1) {
+                    throw new \RuntimeException(
+                        'Não foi possível ocultar o BI no registo do documento.'
+                    );
+                }
+            }
             $pdf = (new SchoolPdfGenerator())->issuedDocument([
                 'tipo_documento' => $request['tipo_documento'],
                 'codigo' => $request['codigo'],
@@ -155,6 +198,7 @@ final class DocumentRequestIssuer
                 'escola_codigo' => $request['escola_codigo'],
                 'escola_nome' => $request['escola_nome'],
                 'escola_director' => $request['escola_director'],
+                'escola_chefe_secretaria' => $request['escola_chefe_secretaria'],
                 'escola_tipo' => $request['escola_tipo'],
                 'escola_provincia' => $request['escola_provincia'],
                 'escola_distrito' => $request['escola_distrito'],
@@ -174,7 +218,7 @@ final class DocumentRequestIssuer
                 ? ''
                 : ' AND escola_id = :escola_id';
             $updateParameters = [
-                'conteudo_documento' => $documentContent,
+                'conteudo_documento' => $storedDocumentContent,
                 'codigo_validacao' => $validationCode,
                 'documento_pdf' => $pdf,
                 'emitido_em' => $issuedAt,
@@ -404,16 +448,38 @@ final class DocumentRequestIssuer
                 static fn(int $quarter): string => $quarter . '.º trimestre',
                 $quarterResults['trimestres'] ?? []
             );
+            $academicProgress = $request['ano_estado'] === 'encerrado'
+                ? 'Frequentou e concluiu a '
+                    . $request['classe_nome']
+                    . ' do Sistema Nacional de Educação'
+                : 'Frequentou a '
+                    . $request['classe_nome']
+                    . ' do Sistema Nacional de Educação';
 
-            return 'Declara-se, para os devidos efeitos, que '
-                . $request['aluno_nome'] . ' (' . $request['codigo_central']
-                . ') possui as classificações dos trimestres concluídos de '
-                . implode(', ', $quarterLabels) . ', no ano lectivo de '
-                . $request['ano_lectivo'] . ', na classe ' . $request['classe_nome']
-                . ', turma ' . $request['turma_nome'] . ', nesta escola.';
+            return $this->declarationIdentityPrefix($request)
+                . $academicProgress
+                . ', no turno ' . $this->declarationShift($request['turma_turno'])
+                . ', na turma ' . $request['turma_nome']
+                . ', no ano lectivo de ' . $request['ano_lectivo']
+                . ($request['ano_estado'] === 'encerrado'
+                    ? ', com as classificações dos trimestres concluídos de '
+                        . implode(', ', $quarterLabels) . ':'
+                    : '. O ano lectivo ainda decorre; esta declaração apresenta '
+                        . 'as classificações dos trimestres concluídos de '
+                        . implode(', ', $quarterLabels) . ':');
         }
 
-        if (in_array($request['tipo_documento'], ['certificado', 'declaracao'], true)) {
+        if ($request['tipo_documento'] === 'declaracao') {
+            return $this->declarationIdentityPrefix($request)
+                . 'Frequentou e concluiu a ' . $request['classe_nome']
+                . ' do Sistema Nacional de Educação, no turno '
+                . $this->declarationShift($request['turma_turno'])
+                . ', na turma ' . $request['turma_nome']
+                . ', no ano lectivo de ' . $request['ano_lectivo']
+                . ', com as seguintes classificações:';
+        }
+
+        if ($request['tipo_documento'] === 'certificado') {
             $father = trim((string) ($request['nome_pai'] ?? ''));
             $mother = trim((string) ($request['nome_mae'] ?? ''));
             $father = $father === '' ? '________________' : $father;
@@ -454,6 +520,68 @@ final class DocumentRequestIssuer
         return 'Declara-se, para os devidos efeitos, que ' . $request['aluno_nome']
             . ' (' . $request['codigo_central'] . ') concluiu com aproveitamento a '
             . $academicDetails . ', nesta escola.';
+    }
+
+    private function declarationIdentityPrefix(array $request): string
+    {
+        $signatory = trim((string) ($request['escola_director'] ?? ''));
+        $role = 'Director da Escola';
+        if ($signatory === '') {
+            $signatory = trim((string) ($request['escola_chefe_secretaria'] ?? ''));
+            $role = 'Chefe da Secretaria';
+        }
+
+        $father = trim((string) ($request['nome_pai'] ?? ''));
+        $mother = trim((string) ($request['nome_mae'] ?? ''));
+        $father = $father === '' ? '________________' : $father;
+        $mother = $mother === '' ? '________________' : $mother;
+        $identityNumber = trim((string) ($request['bi_numero'] ?? ''));
+        $identityNumber = $identityNumber === '' ? '________________' : $identityNumber;
+        $identityIssueDate = empty($request['data_emissao_bi'])
+            ? '___ de __________ de ______'
+            : $this->formatPortugueseDate($request['data_emissao_bi']);
+        $childTerm = match ($request['sexo'] ?? '') {
+            'Feminino' => 'filha',
+            'Masculino' => 'filho',
+            default => 'filho(a)'
+        };
+
+        return $signatory . ', ' . $role . ' da ' . $request['escola_nome']
+            . ', certifica em cumprimento do despacho exarado em requerimento '
+            . 'que fica arquivado nesta Secretaria, que '
+            . $request['aluno_nome'] . ', natural de '
+            . $this->formatNaturalidade((string) ($request['naturalidade'] ?? ''))
+            . ', ' . $childTerm . ' de ' . $father . ' e de ' . $mother
+            . ', nascido(a) aos '
+            . $this->formatPortugueseDate($request['data_nascimento'])
+            . ', portador do Bilhete de Identidade n.º ' . $identityNumber
+            . ', emitido aos ' . $identityIssueDate . '. ';
+    }
+
+    private function declarationShift(?string $shift): string
+    {
+        return match (trim((string) $shift)) {
+            'Manha', 'manha', 'Manhã', 'manhã', 'Tarde', 'tarde' => 'diurno',
+            'Noite', 'noite' => 'noturno',
+            default => '________________'
+        };
+    }
+
+    private function formatNaturalidade(string $naturalidade): string
+    {
+        $parts = preg_split('/\s*[,;]\s*/u', trim($naturalidade), 2);
+        $locality = trim((string) ($parts[0] ?? ''));
+        $province = trim((string) ($parts[1] ?? ''));
+        $province = preg_replace(
+            '/^prov[ií]ncia(?:\s+de)?\s+/iu',
+            '',
+            $province
+        ) ?? $province;
+        $locality = $locality === '' ? '________________' : $locality;
+        $province = trim($province);
+        $province = $province === '' ? '________________' : $province;
+
+        return $locality . ', Província de ' . $province;
     }
 
     private function formatPortugueseDate(string $date): string

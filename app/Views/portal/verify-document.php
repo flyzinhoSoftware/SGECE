@@ -56,11 +56,6 @@ $error = $error ?? null;
             <div><strong>Emitido em:</strong> <?= $escape($document['emitido_em']) ?></div>
             <div><strong>Código:</strong> <?= $escape($document['codigo_validacao']) ?></div>
         </div>
-        <div class="actions">
-            <a class="button" href="<?= $escape($basePath) ?>/portal/documento?codigo=<?= $escape(urlencode($document['codigo_validacao'])) ?>">
-                Descarregar PDF
-            </a>
-        </div>
     <?php endif; ?>
 
     <a class="back" href="<?= $escape($basePath) ?>/">Voltar ao portal</a>

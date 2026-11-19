@@ -1386,6 +1386,7 @@ class AdminController extends Controller
             'codigo' => 120,
             'nome' => 180,
             'nome_director' => 180,
+            'nome_chefe_secretaria' => 180,
             'tipo' => 30,
             'provincia' => 100,
             'distrito' => 100,
@@ -1544,11 +1545,15 @@ class AdminController extends Controller
             );
         }
 
+        $secretaryName = trim($values['nome_chefe_secretaria']);
         $parameters = [
             'nome' => $values['nome'],
             'nome_director' => $values['nome_director'] === ''
                 ? null
                 : $values['nome_director'],
+            'nome_chefe_secretaria' => $secretaryName === ''
+                ? null
+                : $secretaryName,
             'tipo' => $values['tipo'],
             'provincia' => $values['provincia'],
             'distrito' => $values['distrito'],
@@ -1564,6 +1569,7 @@ class AdminController extends Controller
                 'UPDATE escolas
                  SET nome = :nome,
                      nome_director = :nome_director,
+                     nome_chefe_secretaria = :nome_chefe_secretaria,
                      tipo = :tipo,
                      provincia = :provincia,
                      distrito = :distrito,
@@ -1610,10 +1616,10 @@ class AdminController extends Controller
                     $insertParameters['email'] = $attemptEmail;
                     $insert = $database->prepare(
                         "INSERT INTO escolas
-                            (codigo, nome, nome_director, tipo, provincia, distrito, localidade,
+                           (codigo, nome, nome_director, nome_chefe_secretaria, tipo, provincia, distrito, localidade,
                              endereco, telefone, email, estado)
                          VALUES
-                            (:codigo, :nome, :nome_director, :tipo, :provincia, :distrito, :localidade,
+                           (:codigo, :nome, :nome_director, :nome_chefe_secretaria, :tipo, :provincia, :distrito, :localidade,
                              :endereco, :telefone, :email, 'activa')"
                     );
                     $insert->execute($insertParameters);
@@ -1695,6 +1701,7 @@ class AdminController extends Controller
         $limits = [
             'nome_completo' => 180,
             'data_nascimento' => 10,
+            'data_emissao_bi' => 10,
             'naturalidade' => 180,
             'sexo' => 20,
             'bi' => 30,
@@ -1711,6 +1718,7 @@ class AdminController extends Controller
             'codigo_central' => '',
             'nome_completo' => '',
             'data_nascimento' => '',
+            'data_emissao_bi' => '',
             'naturalidade' => '',
             'sexo' => '',
             'bi' => '',
@@ -1775,22 +1783,45 @@ class AdminController extends Controller
             $errors['bi'] = 'O número do BI é obrigatório para registar o aluno.';
         }
 
+        $birthDate = null;
         if ($values['data_nascimento'] !== '' && !isset($errors['data_nascimento'])) {
-            $birthDate = \DateTimeImmutable::createFromFormat(
+            $parsedBirthDate = \DateTimeImmutable::createFromFormat(
                 '!Y-m-d',
                 $values['data_nascimento']
             );
             $dateErrors = \DateTimeImmutable::getLastErrors();
             if (
-                $birthDate === false ||
+                $parsedBirthDate === false ||
                 ($dateErrors !== false && (
                     $dateErrors['warning_count'] > 0 ||
                     $dateErrors['error_count'] > 0
                 )) ||
-                $birthDate->format('Y-m-d') !== $values['data_nascimento'] ||
-                $birthDate > new \DateTimeImmutable('today')
+                $parsedBirthDate->format('Y-m-d') !== $values['data_nascimento'] ||
+                $parsedBirthDate > new \DateTimeImmutable('today')
             ) {
                 $errors['data_nascimento'] = 'Indique uma data de nascimento válida.';
+            } else {
+                $birthDate = $parsedBirthDate;
+            }
+        }
+        if ($values['data_emissao_bi'] !== '' && !isset($errors['data_emissao_bi'])) {
+            $identityIssueDate = \DateTimeImmutable::createFromFormat(
+                '!Y-m-d',
+                $values['data_emissao_bi']
+            );
+            $dateErrors = \DateTimeImmutable::getLastErrors();
+            if (
+                $identityIssueDate === false ||
+                ($dateErrors !== false && (
+                    $dateErrors['warning_count'] > 0 ||
+                    $dateErrors['error_count'] > 0
+                )) ||
+                $identityIssueDate->format('Y-m-d') !== $values['data_emissao_bi'] ||
+                $identityIssueDate > new \DateTimeImmutable('today') ||
+                ($birthDate !== null && $identityIssueDate < $birthDate)
+            ) {
+                $errors['data_emissao_bi'] =
+                    'Indique uma data de emissão do BI válida.';
             }
         }
         if (
@@ -1873,6 +1904,9 @@ class AdminController extends Controller
         $parameters = [
             'nome_completo' => $values['nome_completo'],
             'data_nascimento' => $values['data_nascimento'],
+            'data_emissao_bi' => $values['data_emissao_bi'] === ''
+                ? null
+                : $values['data_emissao_bi'],
             'naturalidade' => $values['naturalidade'],
             'sexo' => $values['sexo'],
             'nome_pai' => $values['nome_pai'] === '' ? null : $values['nome_pai'],
@@ -1891,6 +1925,7 @@ class AdminController extends Controller
             $updateFields = [
                 'nome_completo = :nome_completo',
                 'data_nascimento = :data_nascimento',
+                'data_emissao_bi = :data_emissao_bi',
                 'naturalidade = :naturalidade',
                 'sexo = :sexo',
                 'nome_pai = :nome_pai',
@@ -1998,12 +2033,12 @@ class AdminController extends Controller
                     $insert = $database->prepare(
                         'INSERT INTO alunos
                             (codigo_central, nome_completo, data_nascimento,
-                             naturalidade, sexo,
+                             data_emissao_bi, naturalidade, sexo,
                              bi_cifrado, bi_hash, nome_pai, nome_mae, contacto,
                              endereco, estado)
                          VALUES
                             (:codigo_central, :nome_completo, :data_nascimento,
-                             :naturalidade, :sexo,
+                             :data_emissao_bi, :naturalidade, :sexo,
                              :bi_cifrado, :bi_hash, :nome_pai, :nome_mae, :contacto,
                              :endereco, \'activo\')'
                     );
@@ -2628,6 +2663,49 @@ class AdminController extends Controller
         ]);
         $content = ob_get_clean();
         $this->renderAdminLayout($user, $pageTitle, $activeMenu, $content);
+    }
+
+    public function downloadIssuedDocument(): void
+    {
+        $this->requireAdministrator();
+        $value = $_GET['codigo'] ?? '';
+        $code = is_string($value) ? strtoupper(trim($value)) : '';
+        if (preg_match('/^[A-F0-9]{32}$/', $code) !== 1) {
+            http_response_code(404);
+            echo 'Documento não encontrado.';
+            return;
+        }
+
+        $statement = Database::connect()->prepare(
+            "SELECT pd.tipo_documento, pd.documento_pdf
+             FROM pedidos_documentos pd
+             WHERE pd.codigo_validacao = :codigo
+               AND pd.estado = 'emitido'
+               AND pd.documento_pdf IS NOT NULL
+             LIMIT 1"
+        );
+        $statement->execute(['codigo' => $code]);
+        $document = $statement->fetch();
+        if (!$document || !is_string($document['documento_pdf'])) {
+            http_response_code(404);
+            echo 'Documento não encontrado.';
+            return;
+        }
+
+        $type = match ($document['tipo_documento']) {
+            'certificado' => 'certificado',
+            'declaracao_notas' => 'declaracao-notas',
+            default => 'declaracao'
+        };
+        header('Content-Type: application/pdf');
+        header(
+            'Content-Disposition: attachment; filename="sgece-'
+            . $type . '-' . $code . '.pdf"'
+        );
+        header('Content-Length: ' . strlen($document['documento_pdf']));
+        header('Cache-Control: private, no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        echo $document['documento_pdf'];
     }
 
     private function requireAdministrator(): array
@@ -3653,7 +3731,8 @@ class AdminController extends Controller
                 if ($editId !== false) {
                     $edit = $database->prepare(
                         'SELECT id, codigo_central, nome_completo, data_nascimento,
-                                naturalidade, sexo, nome_pai, nome_mae, contacto, endereco
+                                data_emissao_bi, naturalidade, sexo, nome_pai, nome_mae,
+                                contacto, endereco
                          FROM alunos WHERE id = :id'
                     );
                     $edit->execute(['id' => $editId]);
@@ -3686,6 +3765,7 @@ class AdminController extends Controller
                 'codigo_central' => '',
                 'nome_completo' => '',
                 'data_nascimento' => '',
+                'data_emissao_bi' => '',
                 'naturalidade' => '',
                 'sexo' => '',
                 'bi' => '',
@@ -3789,11 +3869,13 @@ class AdminController extends Controller
         if ($search !== '') {
             $conditions[] = '(codigo LIKE :codigo OR nome LIKE :nome
                 OR nome_director LIKE :nome_director
+                OR nome_chefe_secretaria LIKE :nome_chefe_secretaria
                 OR provincia LIKE :provincia OR distrito LIKE :distrito)';
             $pattern = '%' . $search . '%';
             $parameters['codigo'] = $pattern;
             $parameters['nome'] = $pattern;
             $parameters['nome_director'] = $pattern;
+            $parameters['nome_chefe_secretaria'] = $pattern;
             $parameters['provincia'] = $pattern;
             $parameters['distrito'] = $pattern;
         }
@@ -3810,7 +3892,7 @@ class AdminController extends Controller
         $page = min($page, $totalPages);
 
         $statement = $database->prepare(
-            'SELECT id, codigo, nome, nome_director, tipo, provincia, distrito, localidade,
+            'SELECT id, codigo, nome, nome_director, nome_chefe_secretaria, tipo, provincia, distrito, localidade,
                     telefone, email, estado
              FROM escolas' . $where . '
              ORDER BY nome, id
@@ -3836,7 +3918,8 @@ class AdminController extends Controller
                     : false;
                 if ($editId !== false) {
                     $edit = $database->prepare(
-                        'SELECT id, codigo, nome, nome_director, tipo, provincia, distrito,
+                        'SELECT id, codigo, nome, nome_director, nome_chefe_secretaria,
+                                tipo, provincia, distrito,
                                 localidade, endereco, telefone
                          FROM escolas WHERE id = :id'
                     );
@@ -3869,6 +3952,7 @@ class AdminController extends Controller
                 'codigo' => '',
                 'nome' => '',
                 'nome_director' => '',
+                'nome_chefe_secretaria' => '',
                 'tipo' => '',
                 'provincia' => self::SCHOOL_PROVINCE,
                 'distrito' => '',

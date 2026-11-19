@@ -2,6 +2,7 @@
 namespace App\Controllers;
 
 use App\Core\Controller;
+use App\Services\SchoolPdfGenerator;
 use Config\Database;
 
 class PortalController extends Controller
@@ -24,7 +25,7 @@ class PortalController extends Controller
         $this->view('portal/index', [
             'csrfToken' => $_SESSION['portal_csrf'],
             'feedback' => null,
-            'documentos' => []
+            'pedido' => null
         ]);
     }
 
@@ -45,73 +46,55 @@ class PortalController extends Controller
             return;
         }
 
-        $codigoValue = $_POST['codigo_aluno'] ?? '';
-        $birthValue = $_POST['data_nascimento'] ?? '';
-        $codigoAluno = is_string($codigoValue) ? trim($codigoValue) : '';
-        $dataNascimento = is_string($birthValue) ? trim($birthValue) : '';
+        $codeValue = $_POST['codigo_pedido'] ?? '';
+        $requestCode = is_string($codeValue)
+            ? strtoupper(trim($codeValue))
+            : '';
 
-        if ($codigoAluno === '' || $dataNascimento === '') {
+        if ($requestCode === '') {
             $this->mostrarResultado(
                 'warning',
-                'Dados incompletos',
-                'Preencha o código do aluno e a data de nascimento.'
+                'Protocolo em falta',
+                'Introduza o protocolo indicado no recibo do pedido.'
             );
             return;
         }
 
-        if (strlen($codigoAluno) > 60) {
+        if (preg_match('/^SGECE-PED-[A-F0-9]{12}$/', $requestCode) !== 1) {
             $this->mostrarResultado(
                 'warning',
-                'Código inválido',
-                'Verifique o código do aluno.'
+                'Protocolo inválido',
+                'Confira o formato do protocolo impresso no recibo.'
             );
             return;
         }
 
-        $data = \DateTime::createFromFormat(
-            '!Y-m-d',
-            $dataNascimento
-        );
-
-        if (
-            !$data ||
-            $data->format('Y-m-d') !== $dataNascimento ||
-            $data > new \DateTime('today')
-        ) {
-            $this->mostrarResultado(
-                'warning',
-                'Data inválida',
-                'Introduza uma data de nascimento válida.'
-            );
-            return;
-        }
-
-        $documents = Database::connect()->prepare(
-            "SELECT pd.codigo_validacao, pd.tipo_documento, pd.emitido_em,
+        $statement = Database::connect()->prepare(
+            "SELECT pd.codigo, pd.tipo_documento, pd.estado, pd.resposta_admin,
+                    pd.solicitado_em, pd.emitido_em, pd.concluido_em,
+                    (pd.documento_pdf IS NOT NULL) AS tem_documento,
                     e.nome AS escola_nome
-             FROM alunos a
-             INNER JOIN aluno_escolas ae ON ae.aluno_id = a.id
-             INNER JOIN pedidos_documentos pd ON pd.aluno_escola_id = ae.id
+             FROM pedidos_documentos pd
              INNER JOIN escolas e ON e.id = pd.escola_id
-             WHERE a.codigo_central = :codigo_aluno
-               AND a.data_nascimento = :data_nascimento
-               AND pd.estado = 'emitido'
-               AND pd.documento_pdf IS NOT NULL
-               AND pd.codigo_validacao IS NOT NULL
-             ORDER BY pd.emitido_em DESC, pd.id DESC"
+             WHERE pd.codigo = :codigo
+             LIMIT 1"
         );
-        $documents->execute([
-            'codigo_aluno' => $codigoAluno,
-            'data_nascimento' => $dataNascimento
-        ]);
-        $issuedDocuments = $documents->fetchAll();
+        $statement->execute(['codigo' => $requestCode]);
+        $request = $statement->fetch() ?: null;
+        if ($request === null) {
+            $this->mostrarResultado(
+                'warning',
+                'Pedido não encontrado',
+                'Não foi encontrado um pedido com esse protocolo. Confira os dados do recibo.'
+            );
+            return;
+        }
+
         $this->mostrarResultado(
-            $issuedDocuments === [] ? 'info' : 'success',
-            $issuedDocuments === [] ? 'Sem documentos emitidos' : 'Documentos disponíveis',
-            $issuedDocuments === []
-                ? 'Não foram encontrados documentos emitidos para os dados indicados.'
-                : 'Foram encontrados documentos emitidos para o aluno.',
-            $issuedDocuments
+            'success',
+            'Consulta realizada',
+            'O estado actual do pedido está apresentado abaixo.',
+            $request
         );
     }
 
@@ -154,55 +137,57 @@ class PortalController extends Controller
         ]);
     }
 
-    public function downloadIssuedDocument(): void
+    public function downloadAvailabilityReceipt(): void
     {
+        header('Cache-Control: private, no-store, max-age=0');
         $value = $_GET['codigo'] ?? '';
         $code = is_string($value) ? strtoupper(trim($value)) : '';
-        if (preg_match('/^[A-F0-9]{32}$/', $code) !== 1) {
+        if (preg_match('/^SGECE-PED-[A-F0-9]{12}$/', $code) !== 1) {
             $this->notFound();
             return;
         }
 
         $statement = Database::connect()->prepare(
-            "SELECT codigo, tipo_documento, documento_pdf
-             FROM pedidos_documentos
-             WHERE codigo_validacao = :codigo
-               AND estado = 'emitido'
-               AND documento_pdf IS NOT NULL
+            "SELECT pd.codigo, pd.tipo_documento, pd.solicitado_em,
+                    pd.emitido_em, e.nome AS escola_nome
+             FROM pedidos_documentos pd
+             INNER JOIN escolas e ON e.id = pd.escola_id
+             WHERE pd.codigo = :codigo
+               AND pd.estado = 'emitido'
+               AND pd.documento_pdf IS NOT NULL
              LIMIT 1"
         );
         $statement->execute(['codigo' => $code]);
-        $document = $statement->fetch();
-        if (!$document || !is_string($document['documento_pdf'])) {
+        $request = $statement->fetch();
+        if (!$request) {
             $this->notFound();
             return;
         }
 
-        $type = match ($document['tipo_documento']) {
-            'certificado' => 'certificado',
-            'declaracao_notas' => 'declaracao-notas',
-            default => 'declaracao'
-        };
+        $pdf = (new SchoolPdfGenerator())->documentAvailabilityReceipt($request);
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="sgece-' . $type . '-' . $code . '.pdf"');
-        header('Content-Length: ' . strlen($document['documento_pdf']));
+        header(
+            'Content-Disposition: attachment; filename="comprovativo-disponibilidade-'
+            . $code . '.pdf"'
+        );
+        header('Content-Length: ' . strlen($pdf));
         header('Cache-Control: private, no-store, max-age=0');
         header('X-Content-Type-Options: nosniff');
-        echo $document['documento_pdf'];
+        echo $pdf;
     }
 
     private function mostrarResultado(
         string $tipo,
         string $titulo,
         string $mensagem,
-        array $documents = []
+        ?array $request = null
     ): void {
         $this->iniciarSessao();
         header('Cache-Control: private, no-store, max-age=0');
 
         $this->view('portal/index', [
             'csrfToken' => $_SESSION['portal_csrf'],
-            'documentos' => $documents,
+            'pedido' => $request,
             'feedback' => [
                 'tipo' => $tipo,
                 'titulo' => $titulo,

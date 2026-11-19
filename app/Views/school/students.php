@@ -114,6 +114,16 @@ $escape = static function ($value): string {
                                 <?php endif; ?>
                             </div>
                             <div class="col-md-6">
+                                <label class="form-label" for="school-student-bi-date">Data de emissão do BI</label>
+                                <input class="form-control<?= isset($errors['data_emissao_bi']) ? ' is-invalid' : '' ?>"
+                                       type="date" id="school-student-bi-date" name="data_emissao_bi"
+                                       max="<?= date('Y-m-d') ?>"
+                                       value="<?= $escape($formValues['data_emissao_bi']) ?>">
+                                <?php if (isset($errors['data_emissao_bi'])): ?>
+                                    <div class="invalid-feedback"><?= $escape($errors['data_emissao_bi']) ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="col-md-6">
                                 <label class="form-label" for="school-student-father">Nome do pai</label>
                                 <input class="form-control<?= isset($errors['nome_pai']) ? ' is-invalid' : '' ?>"
                                        id="school-student-father" name="nome_pai" maxlength="150"

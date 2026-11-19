@@ -117,6 +117,7 @@ $paginationQuery = http_build_query(array_filter([
                 $fields = [
                     'nome' => ['Nome da escola *', 180, true],
                     'nome_director' => ['Nome do director *', 180, true],
+                    'nome_chefe_secretaria' => ['Nome do chefe da secretaria', 180, false],
                     'localidade' => ['Localidade', 120, false],
                     'endereco' => ['Endereço *', 255, true],
                     'telefone' => ['Telefone *', 30, true]
@@ -287,7 +288,7 @@ $paginationQuery = http_build_query(array_filter([
                 <thead>
                     <tr>
                         <th scope="col">Escola</th>
-                        <th scope="col">Director</th>
+                        <th scope="col">Direcção / Secretaria</th>
                         <th scope="col">Código</th>
                         <th scope="col">Localização</th>
                         <th scope="col">Contacto</th>
@@ -311,7 +312,10 @@ $paginationQuery = http_build_query(array_filter([
                                     <strong><?= $escape($school['nome']) ?></strong>
                                     <small><?= $escape($schoolLevels[$school['tipo']] ?? $school['tipo']) ?></small>
                                 </td>
-                                <td><?= $escape($school['nome_director'] ?: '—') ?></td>
+                                <td>
+                                    <strong><?= $escape($school['nome_director'] ?: '—') ?></strong>
+                                    <small>Chefe da secretaria: <?= $escape($school['nome_chefe_secretaria'] ?: '—') ?></small>
+                                </td>
                                 <td><span class="school-code"><?= $escape($school['codigo']) ?></span></td>
                                 <td>
                                     <strong><?= $escape($school['provincia']) ?></strong>

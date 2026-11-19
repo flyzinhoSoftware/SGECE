@@ -13,7 +13,7 @@ $router->get('/portal', [PortalController::class, 'index']);
 
 // Consulta de disponibilidade de documentos
 $router->post('/portal/consultar', [PortalController::class, 'consultar']);
-$router->get('/portal/documento', [PortalController::class, 'downloadIssuedDocument']);
+$router->get('/portal/recibo-disponibilidade', [PortalController::class, 'downloadAvailabilityReceipt']);
 $router->get('/validar-documento', [PortalController::class, 'verifyDocument']);
 
 
@@ -37,6 +37,7 @@ $router->get('/escola/pedidos-documentos', [SchoolController::class, 'documentRe
 $router->post('/escola/pedidos-documentos', [SchoolController::class, 'saveDocumentRequest']);
 $router->post('/escola/pedidos-documentos/emitir', [SchoolController::class, 'issueDocumentRequest']);
 $router->get('/escola/pedidos-documentos/recibo.pdf', [SchoolController::class, 'downloadDocumentRequestReceipt']);
+$router->get('/escola/pedidos-documentos/documento.pdf', [SchoolController::class, 'downloadIssuedDocument']);
 $router->get('/admin/escolas', [AdminController::class, 'schools']);
 $router->post('/admin/escolas', [AdminController::class, 'saveSchool']);
 $router->post('/admin/escolas/estado', [AdminController::class, 'updateSchoolStatus']);
@@ -55,6 +56,7 @@ $router->post('/admin/gestao-academica/classes', [AdminController::class, 'saveA
 $router->post('/admin/gestao-academica/disciplinas', [AdminController::class, 'saveAcademicDiscipline']);
 $router->get('/admin/pedidos-documentos', [AdminController::class, 'documentRequests']);
 $router->post('/admin/pedidos-documentos/estado', [AdminController::class, 'updateDocumentRequest']);
+$router->get('/admin/pedidos-documentos/documento.pdf', [AdminController::class, 'downloadIssuedDocument']);
 
 $staticAdminPages = [
     '/admin/certificados' => 'certificates',

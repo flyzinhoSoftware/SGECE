@@ -46,6 +46,31 @@ final class StudentIdentity
         return $nonce . $tag . $encrypted;
     }
 
+    public static function decrypt(string $encryptedIdentityNumber): string
+    {
+        if (strlen($encryptedIdentityNumber) <= 28) {
+            throw new \RuntimeException('O BI cifrado do aluno é inválido.');
+        }
+
+        $nonce = substr($encryptedIdentityNumber, 0, 12);
+        $tag = substr($encryptedIdentityNumber, 12, 16);
+        $ciphertext = substr($encryptedIdentityNumber, 28);
+        $identityNumber = openssl_decrypt(
+            $ciphertext,
+            'aes-256-gcm',
+            self::identityKey('encryption'),
+            OPENSSL_RAW_DATA,
+            $nonce,
+            $tag,
+            ''
+        );
+        if ($identityNumber === false) {
+            throw new \RuntimeException('Não foi possível decifrar o BI do aluno.');
+        }
+
+        return $identityNumber;
+    }
+
     public static function exists(PDO $database, string $identityHash, int $excludeId = 0): bool
     {
         $sql = 'SELECT id FROM alunos WHERE bi_hash = :hash';

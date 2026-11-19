@@ -22,7 +22,7 @@ $escape = static function ($value): string {
 
 $csrfToken = $csrfToken ?? ($_SESSION['csrf_token'] ?? '');
 $feedback = $feedback ?? null;
-$documentos = is_array($documentos ?? null) ? $documentos : [];
+$pedido = is_array($pedido ?? null) ? $pedido : null;
 ?>
 
 <!DOCTYPE html>
@@ -34,7 +34,7 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
     <title>SGECE | Portal de Serviços Escolares</title>
 
     <meta name="description"
-          content="Portal público do Sistema de Gestão e Emissão de Certificados Escolares. Consulte a disponibilidade dos seus documentos escolares.">
+          content="Portal público do SGECE. Acompanhe o estado do pedido de documento usando o protocolo do recibo.">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -91,7 +91,7 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                     </li>
 
                     <li class="nav-item">
-                        <a class="nav-link" href="#consulta">Consultar documento</a>
+                        <a class="nav-link" href="#consulta">Acompanhar pedido</a>
                     </li>
 
                     <li class="nav-item">
@@ -135,14 +135,13 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                         </h1>
 
                         <p class="hero-description">
-                            Consulte a disponibilidade dos seus certificados
-                            e declarações escolares através de uma plataforma
-                            simples, segura e acessível.
+                            Acompanhe os pedidos dos seus documentos escolares
+                            através de uma plataforma simples, segura e acessível.
                         </p>
 
                         <div class="hero-actions">
                             <a href="#consulta" class="btn btn-primary btn-lg">
-                                Consultar documento
+                                Acompanhar pedido
                                 <i class="bi bi-arrow-right ms-2"></i>
                             </a>
 
@@ -247,15 +246,15 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                             <i class="bi bi-file-earmark-text"></i>
                         </div>
 
-                        <h3>Certificados escolares</h3>
+                        <h3>Pedidos de certificados</h3>
 
                         <p>
-                            Consulte a disponibilidade do seu certificado
-                            escolar emitido pela instituição de ensino.
+                            Acompanhe o estado do pedido com o protocolo
+                            indicado no recibo.
                         </p>
 
                         <a href="#consulta" class="service-link">
-                            Consultar disponibilidade
+                            Acompanhar pedido
                             <i class="bi bi-arrow-right"></i>
                         </a>
                     </article>
@@ -267,15 +266,15 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                             <i class="bi bi-file-earmark-check"></i>
                         </div>
 
-                        <h3>Declarações escolares</h3>
+                        <h3>Pedidos de declarações</h3>
 
                         <p>
-                            Verifique a disponibilidade de declarações
-                            relacionadas com o seu percurso escolar.
+                            Consulte a resposta da escola e confirme quando a
+                            declaração estiver disponível.
                         </p>
 
                         <a href="#consulta" class="service-link">
-                            Consultar disponibilidade
+                            Acompanhar pedido
                             <i class="bi bi-arrow-right"></i>
                         </a>
                     </article>
@@ -314,31 +313,30 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
             <div class="row align-items-center gy-5">
 
                 <div class="col-lg-5">
-                    <span class="section-label">Consulta de documentos</span>
+                    <span class="section-label">Acompanhamento de pedidos</span>
 
                     <h2 class="consultation-title">
-                        Verifique se o seu documento está disponível.
+                        Acompanhe o seu pedido de documento.
                     </h2>
 
                     <p class="consultation-description">
-                        Introduza os seus dados de identificação para
-                        consultar o estado de disponibilidade do documento
-                        junto da instituição de ensino.
+                        Use o protocolo impresso no recibo recebido após a
+                        submissão do pedido para consultar o estado e a resposta
+                        da escola.
                     </p>
 
                     <div class="consultation-note">
                         <i class="bi bi-info-circle-fill"></i>
 
                         <p>
-                            Esta consulta permite verificar a disponibilidade.
-                            O levantamento do documento é realizado
-                            presencialmente na respectiva escola.
+                            Quando o pedido for emitido, poderá baixar um
+                            comprovativo da disponibilidade do documento.
                         </p>
                     </div>
 
                     <div class="security-note">
                         <i class="bi bi-shield-lock-fill"></i>
-                        <span>Os dados devem ser utilizados apenas para fins de consulta.</span>
+                        <span>Guarde o recibo e não partilhe o seu protocolo.</span>
                     </div>
                 </div>
 
@@ -352,8 +350,8 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                             </div>
 
                             <div>
-                                <h3>Consultar disponibilidade</h3>
-                                <p>Preencha os campos abaixo.</p>
+                                <h3>Acompanhar pedido</h3>
+                                <p>Introduza o protocolo do recibo.</p>
                             </div>
                         </div>
 
@@ -370,37 +368,83 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                             </div>
                         <?php endif; ?>
 
-                        <?php if ($documentos !== []): ?>
-                            <div class="list-group mb-4">
-                                <?php foreach ($documentos as $documento): ?>
-                                    <?php
-                                    $documentLabel = match ($documento['tipo_documento']) {
-                                        'certificado' => 'Certificado escolar',
-                                        'declaracao_notas' => 'Declaração de notas',
-                                        default => 'Declaração escolar'
-                                    };
-                                    ?>
-                                    <div class="list-group-item">
-                                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                                            <div>
-                                                <strong><?= $escape($documentLabel) ?></strong>
-                                                <div class="small text-muted">
-                                                    <?= $escape($documento['escola_nome']) ?>
-                                                    · <?= $escape($documento['emitido_em']) ?>
-                                                </div>
-                                            </div>
-                                            <a class="btn btn-sm btn-primary"
-                                               href="<?= $escape($appBaseUrl) ?>/portal/documento?codigo=<?= $escape(urlencode($documento['codigo_validacao'])) ?>">
-                                                <i class="bi bi-download me-1"></i>Descarregar PDF
-                                            </a>
+                        <?php if ($pedido !== null): ?>
+                            <?php
+                            $documentLabel = match ($pedido['tipo_documento']) {
+                                'certificado' => 'Certificado escolar',
+                                'declaracao_notas' => 'Declaração de notas',
+                                default => 'Declaração escolar'
+                            };
+                            $statusLabels = [
+                                'pendente' => 'Pendente',
+                                'em_analise' => 'Em análise',
+                                'aprovado' => 'Aprovado para emissão',
+                                'emitido' => 'Emitido',
+                                'rejeitado' => 'Rejeitado'
+                            ];
+                            $statusClasses = [
+                                'pendente' => 'secondary',
+                                'em_analise' => 'warning',
+                                'aprovado' => 'primary',
+                                'emitido' => 'success',
+                                'rejeitado' => 'danger'
+                            ];
+                            $statusLabel = $statusLabels[$pedido['estado']] ?? $pedido['estado'];
+                            $statusClass = $statusClasses[$pedido['estado']] ?? 'secondary';
+                            $documentAvailable = $pedido['estado'] === 'emitido'
+                                && (bool) $pedido['tem_documento'];
+                            ?>
+                            <section class="card border-primary-subtle mb-4" aria-label="Estado do pedido">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+                                        <div>
+                                            <span class="small text-muted">Protocolo</span>
+                                            <div class="fw-semibold"><?= $escape($pedido['codigo']) ?></div>
                                         </div>
-                                        <a class="small d-inline-block mt-2"
-                                           href="<?= $escape($appBaseUrl) ?>/validar-documento?codigo=<?= $escape(urlencode($documento['codigo_validacao'])) ?>">
-                                            Validar autenticidade
-                                        </a>
+                                        <span class="badge text-bg-<?= $escape($statusClass) ?>">
+                                            <?= $escape($statusLabel) ?>
+                                        </span>
                                     </div>
-                                <?php endforeach; ?>
-                            </div>
+                                    <dl class="row small mb-0">
+                                        <dt class="col-sm-4">Documento</dt>
+                                        <dd class="col-sm-8"><?= $escape($documentLabel) ?></dd>
+                                        <dt class="col-sm-4">Escola</dt>
+                                        <dd class="col-sm-8"><?= $escape($pedido['escola_nome']) ?></dd>
+                                        <dt class="col-sm-4">Pedido submetido</dt>
+                                        <dd class="col-sm-8"><?= $escape($pedido['solicitado_em']) ?></dd>
+                                        <?php if (!empty($pedido['emitido_em'])): ?>
+                                            <dt class="col-sm-4">Documento emitido</dt>
+                                            <dd class="col-sm-8"><?= $escape($pedido['emitido_em']) ?></dd>
+                                        <?php endif; ?>
+                                        <?php if (!empty($pedido['concluido_em'])): ?>
+                                            <dt class="col-sm-4">Pedido concluído</dt>
+                                            <dd class="col-sm-8"><?= $escape($pedido['concluido_em']) ?></dd>
+                                        <?php endif; ?>
+                                    </dl>
+                                    <?php if (!empty($pedido['resposta_admin'])): ?>
+                                        <div class="alert alert-light border mt-3 mb-0">
+                                            <strong>Resposta da escola</strong>
+                                            <div><?= nl2br($escape($pedido['resposta_admin']), false) ?></div>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="alert <?= $documentAvailable ? 'alert-success' : 'alert-info' ?> mt-3 mb-0"
+                                         role="status">
+                                        <strong><?= $documentAvailable
+                                            ? 'Documento disponível'
+                                            : 'Documento ainda não disponível' ?></strong>
+                                        <div><?= $documentAvailable
+                                            ? 'Pode confirmar o levantamento junto da escola indicada.'
+                                            : 'Consulte novamente mais tarde ou contacte a escola para obter informações.' ?></div>
+                                        <?php if ($documentAvailable): ?>
+                                            <a class="btn btn-success btn-sm mt-3"
+                                               href="<?= $escape($appBaseUrl) ?>/portal/recibo-disponibilidade?codigo=<?= $escape(urlencode($pedido['codigo'])) ?>">
+                                                <i class="bi bi-receipt me-1"></i>
+                                                Baixar comprovativo de disponibilidade
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </section>
                         <?php endif; ?>
 
                         <form id="consultationForm"
@@ -412,58 +456,36 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                                    value="<?= $escape($csrfToken) ?>">
 
                             <div class="mb-4">
-                                <label for="codigo_aluno" class="form-label">
-                                    Código do aluno
+                                <label for="codigo_pedido" class="form-label">
+                                    Protocolo do recibo
                                     <span class="required">*</span>
                                 </label>
 
                                 <div class="input-with-icon">
-                                    <i class="bi bi-person-vcard"></i>
+                                    <i class="bi bi-receipt"></i>
 
                                     <input type="text"
                                            class="form-control"
-                                           id="codigo_aluno"
-                                           name="codigo_aluno"
-                                           placeholder="Ex.: ALU-2026-0001"
-                                           maxlength="50"
+                                           id="codigo_pedido"
+                                           name="codigo_pedido"
+                                           placeholder="Ex.: SGECE-PED-A1B2C3D4E5F6"
+                                           maxlength="32"
                                            autocomplete="off"
+                                           autocapitalize="characters"
                                            required>
                                 </div>
 
                                 <div class="form-text">
-                                    Introduza o código atribuído pela escola.
+                                    Introduza o código indicado junto a “Protocolo” no recibo.
                                 </div>
                             </div>
-
-
-                            <div class="mb-4">
-                                <label for="data_nascimento" class="form-label">
-                                    Data de nascimento
-                                    <span class="required">*</span>
-                                </label>
-
-                                <div class="input-with-icon">
-                                    <i class="bi bi-calendar3"></i>
-
-                                    <input type="date"
-                                           class="form-control"
-                                           id="data_nascimento"
-                                           name="data_nascimento"
-                                           required>
-                                </div>
-
-                                <div class="form-text">
-                                    Utilizada como informação adicional de confirmação.
-                                </div>
-                            </div>
-
 
                             <button type="submit"
                                     class="btn btn-primary btn-submit"
                                     id="consultButton">
 
                                 <span class="button-text">
-                                    Consultar documento
+                                    Consultar pedido
                                     <i class="bi bi-arrow-right ms-2"></i>
                                 </span>
 
@@ -476,7 +498,7 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
 
                             <p class="form-privacy">
                                 <i class="bi bi-lock-fill"></i>
-                                Só são apresentados documentos emitidos após validação administrativa.
+                                O protocolo permite consultar apenas o pedido correspondente.
                             </p>
 
                         </form>
@@ -518,7 +540,7 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                     <p>
                         O Sistema de Gestão e Emissão de Certificados Escolares
                         (SGECE) foi concebido para apoiar a gestão dos documentos
-                        escolares e facilitar a consulta da sua disponibilidade.
+                        escolares e facilitar o acompanhamento dos pedidos.
                     </p>
 
                     <p>
@@ -529,7 +551,7 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
 
                     <div class="about-feature">
                         <i class="bi bi-check-circle-fill"></i>
-                        <span>Consulta de disponibilidade de documentos</span>
+                        <span>Acompanhamento de pedidos por protocolo</span>
                     </div>
 
                     <div class="about-feature">
@@ -554,12 +576,12 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
             <div class="cta-content">
                 <div>
                     <span>SGECE — Serviços escolares</span>
-                    <h2>Precisa de consultar um documento?</h2>
-                    <p>Utilize o portal para verificar a sua disponibilidade.</p>
+                    <h2>Precisa de acompanhar um pedido?</h2>
+                    <p>Utilize o protocolo indicado no recibo para consultar o estado.</p>
                 </div>
 
                 <a href="#consulta" class="btn btn-light btn-lg">
-                    Fazer consulta
+                    Acompanhar pedido
                     <i class="bi bi-arrow-right ms-2"></i>
                 </a>
             </div>
@@ -602,7 +624,7 @@ $documentos = is_array($documentos ?? null) ? $documentos : [];
                 <ul class="footer-links">
                     <li><a href="#inicio">Página inicial</a></li>
                     <li><a href="#servicos">Serviços</a></li>
-                    <li><a href="#consulta">Consultar documento</a></li>
+                    <li><a href="#consulta">Acompanhar pedido</a></li>
                     <li><a href="#sobre">Sobre o sistema</a></li>
                 </ul>
             </div>

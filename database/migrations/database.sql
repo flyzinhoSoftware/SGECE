@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS escolas (
     codigo VARCHAR(120) NOT NULL UNIQUE,
     nome VARCHAR(180) NOT NULL,
     nome_director VARCHAR(180) NULL,
+    nome_chefe_secretaria VARCHAR(180) NULL,
     tipo VARCHAR(30) NOT NULL,
     provincia VARCHAR(100) NOT NULL,
     distrito VARCHAR(100) NOT NULL,
@@ -224,6 +225,7 @@ CREATE TABLE IF NOT EXISTS alunos (
 
     -- HMAC-SHA256 do BI para deteccao de duplicados
     bi_hash CHAR(64) NOT NULL UNIQUE,
+    data_emissao_bi DATE NULL,
 
     nome_pai VARCHAR(150) NULL,
     nome_mae VARCHAR(150) NULL,
