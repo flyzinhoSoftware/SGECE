@@ -155,30 +155,75 @@ class AdminController extends Controller
         $totalSchools = (int) $database
             ->query('SELECT COUNT(*) FROM escolas')
             ->fetchColumn();
+        $totalStudents = (int) $database
+            ->query("SELECT COUNT(*) FROM alunos WHERE estado = 'activo'")
+            ->fetchColumn();
+        $issuedCertificateCount = (int) $database
+            ->query(
+                "SELECT COUNT(*) FROM pedidos_documentos
+                 WHERE tipo_documento = 'certificado'
+                   AND estado = 'emitido'
+                   AND documento_pdf IS NOT NULL"
+            )
+            ->fetchColumn();
+        $issuedDeclarationCount = (int) $database
+            ->query(
+                "SELECT COUNT(*) FROM pedidos_documentos
+                 WHERE tipo_documento IN ('declaracao', 'declaracao_notas')
+                   AND estado = 'emitido'
+                   AND documento_pdf IS NOT NULL"
+            )
+            ->fetchColumn();
         $approvedDocumentCount = (int) $database
             ->query("SELECT COUNT(*) FROM pedidos_documentos WHERE estado = 'aprovado'")
             ->fetchColumn();
+        $recentRequestsStatement = $database->query(
+            'SELECT pd.codigo, pd.tipo_documento, pd.estado, pd.solicitado_em,
+                    e.nome AS escola_nome
+             FROM pedidos_documentos pd
+             INNER JOIN escolas e ON e.id = pd.escola_id
+             ORDER BY pd.solicitado_em DESC, pd.id DESC
+             LIMIT 5'
+        );
+        $recentRequests = $recentRequestsStatement->fetchAll();
+        $nameParts = preg_split('/\s+/u', trim((string) $user['nome']), 2);
+        $primeiroNome = $nameParts[0] ?? 'Utilizador';
+        if ($primeiroNome === '') {
+            $primeiroNome = 'Utilizador';
+        }
 
         $baseAdminPath = $this->basePath() . '/admin';
         $schoolsUrl = $baseAdminPath . '/escolas';
         $approvedDocumentsUrl = $baseAdminPath . '/pedidos-documentos?estado=aprovado';
+        $documentRequestsUrl = $baseAdminPath . '/pedidos-documentos';
         $moduleUrls = [
             'students' => $baseAdminPath . '/alunos',
             'academic' => $baseAdminPath . '/gestao-academica',
             'certificates' => $baseAdminPath . '/certificados',
-            'users' => $baseAdminPath . '/utilizadores',
-            'audit' => $baseAdminPath . '/auditoria'
+            'users' => $baseAdminPath . '/utilizadores'
         ];
 
         ob_start();
         require dirname(__DIR__) . '/Views/admin/dashboard.php';
         $content = ob_get_clean();
+        if (!is_string($content)) {
+            throw new \RuntimeException('Não foi possível compor o painel administrativo.');
+        }
 
         $this->renderAdminLayout(
             $user,
             'Painel de Controlo',
             'dashboard',
-            $content
+            $content,
+            [
+                'totalSchools' => $totalSchools,
+                'totalStudents' => $totalStudents,
+                'issuedCertificateCount' => $issuedCertificateCount,
+                'issuedDeclarationCount' => $issuedDeclarationCount,
+                'approvedDocumentCount' => $approvedDocumentCount,
+                'recentRequests' => $recentRequests,
+                'documentRequestsUrl' => $documentRequestsUrl
+            ]
         );
     }
 
@@ -1339,39 +1384,8 @@ class AdminController extends Controller
             return;
         }
 
-        $pages = [
-            'validations' => [
-                'title' => 'Validações',
-                'icon' => 'bi-patch-check',
-                'description' => 'Área de verificação da autenticidade dos documentos emitidos.',
-                'items' => ['Pesquisa por código', 'Estado de validação', 'Registo de verificações']
-            ],
-            'audit' => [
-                'title' => 'Auditoria',
-                'icon' => 'bi-shield-check',
-                'description' => 'Área de consulta do histórico de actividades administrativas.',
-                'items' => ['Actividades recentes', 'Utilizadores e acções', 'Datas e eventos']
-            ],
-            'settings' => [
-                'title' => 'Configurações',
-                'icon' => 'bi-gear',
-                'description' => 'Área de configuração geral da plataforma SGECE.',
-                'items' => ['Dados institucionais', 'Preferências da plataforma', 'Parâmetros do sistema']
-            ]
-        ];
-
-        if (!isset($pages[$slug])) {
-            http_response_code(404);
-            echo 'Página administrativa não encontrada.';
-            return;
-        }
-
-        $page = $pages[$slug];
-        ob_start();
-        $this->view('admin/static-page', ['page' => $page]);
-        $content = ob_get_clean();
-
-        $this->renderAdminLayout($user, $page['title'], $slug, $content);
+        http_response_code(404);
+        echo 'Página administrativa não encontrada.';
     }
 
     public function saveSchool(): void
@@ -3995,20 +4009,21 @@ class AdminController extends Controller
         array $user,
         string $pageTitle,
         string $activeMenu,
-        string $content
+        string $content,
+        array $pageData = []
     ): void {
         if (!isset($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         }
 
-        $this->view('admin/layouts/main', [
+        $this->view('admin/layouts/main', array_merge($pageData, [
             'pageTitle' => $pageTitle,
             'activeMenu' => $activeMenu,
             'nomeUsuario' => trim((string) $user['nome']),
             'nivelUsuario' => trim((string) $user['nivel']),
             'csrfToken' => $_SESSION['csrf_token'],
             'content' => $content
-        ]);
+        ]));
     }
 
     private function startSession(): void

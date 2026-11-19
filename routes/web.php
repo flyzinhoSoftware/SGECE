@@ -60,10 +60,7 @@ $router->get('/admin/pedidos-documentos/documento.pdf', [AdminController::class,
 
 $staticAdminPages = [
     '/admin/certificados' => 'certificates',
-    '/admin/declaracoes' => 'declarations',
-    '/admin/validacoes' => 'validations',
-    '/admin/auditoria' => 'audit',
-    '/admin/configuracoes' => 'settings'
+    '/admin/declaracoes' => 'declarations'
 ];
 
 foreach ($staticAdminPages as $path => $slug) {

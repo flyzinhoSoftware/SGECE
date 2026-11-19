@@ -4,6 +4,28 @@ $nomeApresentacao = htmlspecialchars(
     ENT_QUOTES,
     'UTF-8'
 );
+$dashboardEscape = static function ($value): string {
+    return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+};
+$documentTypeLabels = [
+    'certificado' => 'Certificado',
+    'declaracao' => 'Declaração anual',
+    'declaracao_notas' => 'Declaração de notas'
+];
+$requestStatusLabels = [
+    'pendente' => 'Pendente',
+    'em_analise' => 'Em análise',
+    'aprovado' => 'Aprovado para emissão',
+    'emitido' => 'Emitido',
+    'rejeitado' => 'Rejeitado'
+];
+$requestStatusClasses = [
+    'pendente' => 'secondary',
+    'em_analise' => 'warning',
+    'aprovado' => 'primary',
+    'emitido' => 'success',
+    'rejeitado' => 'danger'
+];
 ?>
 
 <div class="dashboard-page">
@@ -60,11 +82,11 @@ $nomeApresentacao = htmlspecialchars(
                 <span class="stat-tag">Alunos</span>
             </div>
 
-            <h2>—</h2>
-            <p>Total de alunos registados</p>
+            <h2><?= number_format((int) ($totalStudents ?? 0), 0, ',', '.') ?></h2>
+            <p>Alunos activos registados</p>
 
             <div class="stat-footer">
-                <span>Aguardando integração</span>
+                <span>Registos activos</span>
             </div>
         </article>
 
@@ -78,11 +100,11 @@ $nomeApresentacao = htmlspecialchars(
                 <span class="stat-tag">Certificados</span>
             </div>
 
-            <h2>—</h2>
+            <h2><?= number_format((int) ($issuedCertificateCount ?? 0), 0, ',', '.') ?></h2>
             <p>Certificados emitidos</p>
 
             <div class="stat-footer">
-                <span>Aguardando integração</span>
+                <span>Documentos disponíveis</span>
             </div>
         </article>
 
@@ -96,11 +118,11 @@ $nomeApresentacao = htmlspecialchars(
                 <span class="stat-tag">Declarações</span>
             </div>
 
-            <h2>—</h2>
+            <h2><?= number_format((int) ($issuedDeclarationCount ?? 0), 0, ',', '.') ?></h2>
             <p>Declarações emitidas</p>
 
             <div class="stat-footer">
-                <span>Aguardando integração</span>
+                <span>Documentos disponíveis</span>
             </div>
         </article>
 
@@ -196,15 +218,6 @@ $nomeApresentacao = htmlspecialchars(
                 </a>
 
 
-                <a class="module-item" href="<?= htmlspecialchars($moduleUrls['audit'], ENT_QUOTES, 'UTF-8') ?>">
-                    <div class="module-icon module-red">
-                        <i class="bi bi-shield-check"></i>
-                    </div>
-
-                    <strong>Auditoria</strong>
-                    <small>Registo de actividades</small>
-                </a>
-
             </div>
 
         </div>
@@ -232,7 +245,7 @@ $nomeApresentacao = htmlspecialchars(
 
                 <div>
                     <strong>Base de dados</strong>
-                    <small>Ligação configurada no projecto</small>
+                    <small>Ligação activa</small>
                 </div>
             </div>
 
@@ -244,19 +257,19 @@ $nomeApresentacao = htmlspecialchars(
 
                 <div>
                     <strong>Controlo de acesso</strong>
-                    <small>Autenticação necessária</small>
+                    <small>Acesso autenticado</small>
                 </div>
             </div>
 
 
             <div class="information-item">
                 <div class="information-icon">
-                    <i class="bi bi-clock-history"></i>
+                    <i class="bi bi-arrow-repeat"></i>
                 </div>
 
                 <div>
-                    <strong>Auditoria</strong>
-                    <small>Módulo ainda por integrar</small>
+                    <strong>Dados do painel</strong>
+                    <small>Actualizados a cada acesso</small>
                 </div>
             </div>
 
@@ -265,13 +278,68 @@ $nomeApresentacao = htmlspecialchars(
                 <i class="bi bi-lightbulb"></i>
 
                 <p>
-                    Os documentos aprovados aparecem aqui para emissão.
-                    Os restantes indicadores serão integrados com os respectivos módulos.
+                    Os indicadores são actualizados com os registos de alunos,
+                    escolas e pedidos de documentos.
                 </p>
             </div>
 
         </div>
 
+    </section>
+
+    <section class="dashboard-panel recent-requests-panel">
+        <div class="panel-heading">
+            <div>
+                <h3>Pedidos recentes</h3>
+                <p>Últimos pedidos de documentos registados no sistema</p>
+            </div>
+            <a class="btn btn-sm btn-outline-primary"
+               href="<?= $dashboardEscape($documentRequestsUrl ?? '#') ?>">
+                Ver todos
+            </a>
+        </div>
+
+        <?php if (($recentRequests ?? []) === []): ?>
+            <p class="text-muted mb-0">Ainda não existem pedidos de documentos.</p>
+        <?php else: ?>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Protocolo</th>
+                            <th>Documento</th>
+                            <th>Escola</th>
+                            <th>Data do pedido</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($recentRequests as $request): ?>
+                            <?php
+                            $requestStatus = (string) $request['estado'];
+                            $statusClass = $requestStatusClasses[$requestStatus] ?? 'secondary';
+                            ?>
+                            <tr>
+                                <td><strong><?= $dashboardEscape($request['codigo']) ?></strong></td>
+                                <td><?= $dashboardEscape(
+                                    $documentTypeLabels[$request['tipo_documento']]
+                                        ?? $request['tipo_documento']
+                                ) ?></td>
+                                <td><?= $dashboardEscape($request['escola_nome']) ?></td>
+                                <td><?= $dashboardEscape($request['solicitado_em']) ?></td>
+                                <td>
+                                    <span class="badge text-bg-<?= $dashboardEscape($statusClass) ?>">
+                                        <?= $dashboardEscape(
+                                            $requestStatusLabels[$requestStatus] ?? $requestStatus
+                                        ) ?>
+                                    </span>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
     </section>
 
 

@@ -72,7 +72,10 @@ $iniciais = strtoupper(
             <a href="<?= $escape($homePath) ?>" class="brand-link">
 
                 <span class="brand-icon">
-                    <i class="bi bi-mortarboard-fill"></i>
+                    <img
+                        class="brand-emblem"
+                        src="<?= $escape($publicPath) ?>/assets/img/brasao-mocambique.png"
+                        alt="Brasão da República de Moçambique">
                 </span>
 
                 <span class="brand-label">
@@ -199,31 +202,12 @@ $iniciais = strtoupper(
                 <span>Pedidos das escolas</span>
             </a>
 
-            <a href="<?= $escape($basePath) ?>/admin/validacoes"
-               class="sidebar-link <?= $activeMenu === 'validations' ? 'active' : '' ?>">
-                <i class="bi bi-patch-check"></i>
-                <span>Validações</span>
-            </a>
-
-
-            <div class="sidebar-section-label">SISTEMA</div>
+            <div class="sidebar-section-label">ACESSO</div>
 
             <a href="<?= $escape($basePath) ?>/admin/utilizadores"
                class="sidebar-link <?= $activeMenu === 'users' ? 'active' : '' ?>">
                 <i class="bi bi-person-gear"></i>
                 <span>Utilizadores</span>
-            </a>
-
-            <a href="<?= $escape($basePath) ?>/admin/auditoria"
-               class="sidebar-link <?= $activeMenu === 'audit' ? 'active' : '' ?>">
-                <i class="bi bi-shield-check"></i>
-                <span>Auditoria</span>
-            </a>
-
-            <a href="<?= $escape($basePath) ?>/admin/configuracoes"
-               class="sidebar-link <?= $activeMenu === 'settings' ? 'active' : '' ?>">
-                <i class="bi bi-gear"></i>
-                <span>Configurações</span>
             </a>
 
             <?php endif; ?>

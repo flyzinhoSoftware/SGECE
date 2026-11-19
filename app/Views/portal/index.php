@@ -60,7 +60,10 @@ $pedido = is_array($pedido ?? null) ? $pedido : null;
 
             <a class="navbar-brand brand" href="<?= $escape($appBaseUrl) ?>/">
                 <span class="brand-icon">
-                    <i class="bi bi-mortarboard-fill"></i>
+                    <img
+                        class="brand-emblem"
+                        src="<?= $escape($publicBaseUrl) ?>/assets/img/brasao-mocambique.png"
+                        alt="Brasão da República de Moçambique">
                 </span>
 
                 <span class="brand-text">
@@ -173,7 +176,10 @@ $pedido = is_array($pedido ?? null) ? $pedido : null;
                         <div class="document-card">
                             <div class="document-top">
                                 <span class="document-logo">
-                                    <i class="bi bi-mortarboard-fill"></i>
+                                    <img
+                                        class="document-emblem"
+                                        src="<?= $escape($publicBaseUrl) ?>/assets/img/brasao-mocambique.png"
+                                        alt="">
                                 </span>
 
                                 <span class="document-status">
@@ -602,7 +608,10 @@ $pedido = is_array($pedido ?? null) ? $pedido : null;
                    href="<?= $escape($appBaseUrl) ?>/">
 
                     <span class="brand-icon">
-                        <i class="bi bi-mortarboard-fill"></i>
+                        <img
+                            class="brand-emblem"
+                            src="<?= $escape($publicBaseUrl) ?>/assets/img/brasao-mocambique.png"
+                            alt="">
                     </span>
 
                     <span class="brand-text">
